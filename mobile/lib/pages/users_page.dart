@@ -49,6 +49,12 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   List<dynamic> _filterUsers(List<dynamic> users) {
+    // Admin SIEMPRE ve solo personal (conductores y supervisores)
+    if (AuthService.isAdmin) {
+      return users.where((u) => [2, 3].contains(u['id_tipo_usuario'])).toList();
+    }
+
+    // Supervisor: depende del flag soloPersonal
     if (widget.soloPersonal) {
       // Solo conductores (2) y supervisores (3)
       return users.where((u) => [2, 3].contains(u['id_tipo_usuario'])).toList();
@@ -188,9 +194,12 @@ class _CreateUserFormState extends State<_CreateUserForm> {
   @override
   void initState() {
     super.initState();
-    // Si es usuarios huéspedes, tipo = 1
-    if (!widget.soloPersonal) {
-      _tipo = 1;
+    // Admin siempre crea personal (conductor o supervisor)
+    // Supervisor: si soloPersonal=true crea personal, si no crea huéspedes
+    if (widget.isAdmin || widget.soloPersonal) {
+      _tipo = 2; // Por defecto conductor
+    } else {
+      _tipo = 1; // Usuario huésped
     }
   }
 
@@ -255,7 +264,8 @@ class _CreateUserFormState extends State<_CreateUserForm> {
             ),
             const SizedBox(height: 8),
 
-            if (widget.soloPersonal)
+            // Dropdown de tipo: varía según rol
+            if (widget.isAdmin || widget.soloPersonal)
               DropdownButtonFormField<int>(
                 value: _tipo,
                 decoration: const InputDecoration(labelText: 'Tipo de personal'),
@@ -264,7 +274,10 @@ class _CreateUserFormState extends State<_CreateUserForm> {
                   DropdownMenuItem(value: 3, child: Text('Supervisor')),
                 ],
                 onChanged: (v)=> setState(()=> _tipo = v ?? 2),
-              ),
+              )
+            else
+            // Supervisor creando huéspedes: tipo fijo en 1, no mostrar dropdown
+              const SizedBox.shrink(),
 
             DropdownButtonFormField<int>(
               value: _estado,

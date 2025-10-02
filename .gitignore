@@ -32,6 +32,11 @@ mobile/android/build/
 
 # --- Node / web (si hubiera) ---
 **/node_modules/
+<<<<<<< HEAD
+=======
+
+# Cache de Python
+>>>>>>> f7326e9 (Borrar cachés y otros cambios)
 __pycache__/
 *.py[cod]
 *.pyo
@@ -39,5 +44,9 @@ __pycache__/
 *.pdb
 *.egg-info/
 *.egg
+<<<<<<< HEAD
 .pytest_cache/
 
+=======
+.pytest_cache/
+>>>>>>> f7326e9 (Borrar cachés y otros cambios)

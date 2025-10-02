@@ -9,7 +9,7 @@ from datetime import datetime
 from .. import models, schemas
 from ..deps import get_db
 from ..auth_deps import get_current_claims, require_role
-from ..security import get_password_hash  # ← AGREGADO
+from ..security import get_password_hash  
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
 

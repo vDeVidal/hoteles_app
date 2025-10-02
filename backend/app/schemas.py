@@ -373,3 +373,11 @@ class NotificacionOut(BaseModel):
     id_estado_mensaje: int
     class Config: 
         from_attributes = True
+
+# =========================
+#    Conductor-Vehículo
+# =========================
+
+class ConductorVehiculoAssignIn(BaseModel):
+    id_conductor: int
+    id_vehiculo: int

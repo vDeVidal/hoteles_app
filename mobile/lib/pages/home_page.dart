@@ -63,6 +63,18 @@ class _HomePageState extends State<HomePage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text('Bienvenido(a) a $hotelTitle'),
+          actions: [
+            // Botón cambiar hotel solo para admin
+            if (AuthService.isAdmin)
+              IconButton(
+                tooltip: 'Cambiar hotel',
+                onPressed: () {
+                  HotelSession.clear();
+                  Navigator.of(context).pushNamedAndRemoveUntil('/select_hotel', (_) => false);
+                },
+                icon: const Icon(Icons.swap_horiz),
+              ),
+          ],
         ),
         body: TabBarView(children: tabs.map((t) => t.page).toList()),
         bottomNavigationBar: TabBar(
@@ -84,9 +96,10 @@ class _HomePageState extends State<HomePage> {
       case 3: // Supervisor - Gestión completa del hotel
         return [
           _TabDef('Dashboard', Icons.dashboard, const DashboardPage()),
-          _TabDef('Asignar', Icons.assignment, const AssignmentsPage()),
+          _TabDef('Asignar Viajes', Icons.assignment, const AssignmentsPage()),
           _TabDef('Usuarios', Icons.people, const UsersPage()), // Solo usuarios huéspedes
-          _TabDef('Personal', Icons.badge, const UsersPage(soloPersonal: true)), // Conductores/Supervisores
+          ///_TabDef('Personal', Icons.badge, const UsersPage(soloPersonal: true)), // Conductores/Supervisores
+          _TabDef('Cond-Veh', Icons.car_rental, const ConductorVehiculoPage()), // Asignar vehículos a conductores
           _TabDef('Vehículos', Icons.local_taxi, const VehiclesPage()),
           _TabDef('Rutas', Icons.alt_route, const RoutesPage()),
           _TabDef('Perfil', Icons.person, const ProfilePage()),

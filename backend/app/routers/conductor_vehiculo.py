@@ -60,8 +60,7 @@ def listar_asignaciones_actuales(
 
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_role(3))])
 def asignar_vehiculo_a_conductor(
-    id_conductor: int,
-    id_vehiculo: int,
+    body: schemas.ConductorVehiculoAssignIn,
     db: Session = Depends(get_db),
     claims: dict = Depends(get_current_claims)
 ):
@@ -73,13 +72,25 @@ def asignar_vehiculo_a_conductor(
     if not me or not me.id_hotel:
         raise HTTPException(403, "Usuario sin hotel")
     
-    # Validar conductor
-    conductor = db.query(models.Usuario).get(id_conductor)
-    if not conductor or conductor.id_hotel != me.id_hotel or conductor.id_tipo_usuario != 2:
+    # Validar que el usuario sea conductor del hotel
+    usuario_conductor = db.query(models.Usuario).get(body.id_conductor)
+    if not usuario_conductor or usuario_conductor.id_hotel != me.id_hotel or usuario_conductor.id_tipo_usuario != 2:
         raise HTTPException(400, "Conductor no válido")
     
+    # Buscar el registro en la tabla conductores (o crearlo si no existe)
+    conductor = db.query(models.Conductor).filter(models.Conductor.id_usuario == body.id_conductor).first()
+    if not conductor:
+        # Crear registro de conductor si no existe
+        conductor = models.Conductor(
+            id_usuario=body.id_conductor,
+            id_estado_actividad=1,  # Activo
+            fecha_contratacion=datetime.utcnow().date()
+        )
+        db.add(conductor)
+        db.flush()  # Para obtener el id_conductor
+    
     # Validar vehículo
-    vehiculo = db.query(models.Vehiculo).get(id_vehiculo)
+    vehiculo = db.query(models.Vehiculo).get(body.id_vehiculo)
     if not vehiculo or vehiculo.id_hotel != me.id_hotel:
         raise HTTPException(400, "Vehículo no válido")
     
@@ -87,7 +98,7 @@ def asignar_vehiculo_a_conductor(
     asignaciones_previas = (
         db.query(models.ConductorVehiculo)
         .filter(
-            models.ConductorVehiculo.id_conductor == id_conductor,
+            models.ConductorVehiculo.id_conductor == conductor.id_conductor,
             models.ConductorVehiculo.hora_fin_asignacion.is_(None)
         )
         .all()
@@ -99,8 +110,8 @@ def asignar_vehiculo_a_conductor(
     
     # Crear nueva asignación
     nueva = models.ConductorVehiculo(
-        id_conductor=id_conductor,
-        id_vehiculo=id_vehiculo,
+        id_conductor=conductor.id_conductor,  # Usar id_conductor, NO id_usuario
+        id_vehiculo=body.id_vehiculo,
         hora_asignacion=ahora
     )
     db.add(nueva)

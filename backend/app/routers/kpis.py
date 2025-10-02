@@ -1,51 +1,43 @@
 # app/routers/kpis.py
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, extract, text
+from sqlalchemy import func, case, text
 from datetime import datetime, timedelta
 from typing import Optional
 
 from .. import models
 from ..deps import get_db
-from ..auth_deps import get_current_claims, require_role, require_any_role
-
+from ..auth_deps import get_current_claims, require_role
+# Importación necesaria para timestampdiff
+from sqlalchemy import text
 
 router = APIRouter(prefix="/kpis", tags=["kpis"])
 
 
-def _hotel_of_user(db: Session, claims: dict) -> int:
-    """Helper: obtiene el hotel del usuario actual."""
-    me = db.query(models.Usuario).get(int(claims["sub"]))
-    if not me or not me.id_hotel:
-        raise HTTPException(403, "Usuario sin hotel")
-    return me.id_hotel
-
-
-@router.get("/dashboard", dependencies=[Depends(require_any_role([3, 4]))])
+@router.get("/dashboard", dependencies=[Depends(require_role(3))])
 def get_dashboard_kpis(
+    hotel_id: Optional[int] = Query(None, alias="hotelId"),
     fecha_desde: Optional[datetime] = Query(None),
     fecha_hasta: Optional[datetime] = Query(None),
-    hotelId: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     claims: dict = Depends(get_current_claims)
-
 ):
     """
     Obtiene KPIs principales del dashboard para Supervisor y Admin.
-    
-    Métricas:
-    - Total de viajes (por estado)
-    - Viajes hoy
-    - Conductores disponibles
-    - Vehículos disponibles
-    - Tiempo promedio de viaje
-    - Rutas más utilizadas
+    Admin debe pasar hotelId como query parameter.
     """
     role = int(claims.get("role", 0))
-    if role == 4 and hotelId is not None:      # 4 = Admin
-        hotel_id = int(hotelId)
-    else:
-        hotel_id = _hotel_of_user(db, claims)
+    
+    # Determinar el hotel
+    if role == 4:  # Admin
+        if not hotel_id:
+            raise HTTPException(400, "Admin debe especificar hotelId")
+        selected_hotel = hotel_id
+    else:  # Supervisor
+        me = db.query(models.Usuario).get(int(claims["sub"]))
+        if not me or not me.id_hotel:
+            raise HTTPException(403, "Usuario sin hotel")
+        selected_hotel = me.id_hotel
     
     # Fechas por defecto: último mes
     if not fecha_desde:
@@ -61,7 +53,7 @@ def get_dashboard_kpis(
         )
         .join(models.EstadoViaje, models.Viaje.id_estado_viaje == models.EstadoViaje.id_estado_viaje)
         .filter(
-            models.Viaje.id_hotel == hotel_id,
+            models.Viaje.id_hotel == selected_hotel,
             models.Viaje.agendada_para.between(fecha_desde, fecha_hasta)
         )
         .group_by(models.EstadoViaje.nombre_estado_viaje)
@@ -75,7 +67,7 @@ def get_dashboard_kpis(
     viajes_hoy = (
         db.query(func.count(models.Viaje.id_viaje))
         .filter(
-            models.Viaje.id_hotel == hotel_id,
+            models.Viaje.id_hotel == selected_hotel,
             models.Viaje.agendada_para.between(hoy_inicio, hoy_fin)
         )
         .scalar()
@@ -85,7 +77,7 @@ def get_dashboard_kpis(
     conductores_disponibles = (
         db.query(func.count(models.Usuario.id_usuario))
         .filter(
-            models.Usuario.id_hotel == hotel_id,
+            models.Usuario.id_hotel == selected_hotel,
             models.Usuario.id_tipo_usuario == 2,  # Conductor
             models.Usuario.id_estado_actividad == 1,  # Activo
             models.Usuario.is_suspended == False
@@ -97,7 +89,7 @@ def get_dashboard_kpis(
     vehiculos_disponibles = (
         db.query(func.count(models.Vehiculo.id_vehiculo))
         .filter(
-            models.Vehiculo.id_hotel == hotel_id,
+            models.Vehiculo.id_hotel == selected_hotel,
             models.Vehiculo.id_estado_vehiculo == 1  # Activo
         )
         .scalar()
@@ -116,7 +108,7 @@ def get_dashboard_kpis(
         )
         .join(models.Viaje, models.AsignacionViajes.id_viaje == models.Viaje.id_viaje)
         .filter(
-            models.Viaje.id_hotel == hotel_id,
+            models.Viaje.id_hotel == selected_hotel,
             models.AsignacionViajes.inicio_viaje.isnot(None),
             models.AsignacionViajes.fin_viaje.isnot(None),
             models.Viaje.agendada_para.between(fecha_desde, fecha_hasta)
@@ -132,7 +124,7 @@ def get_dashboard_kpis(
         )
         .join(models.Viaje, models.Ruta.id_ruta == models.Viaje.id_ruta)
         .filter(
-            models.Viaje.id_hotel == hotel_id,
+            models.Viaje.id_hotel == selected_hotel,
             models.Viaje.agendada_para.between(fecha_desde, fecha_hasta)
         )
         .group_by(models.Ruta.nombre_ruta)
@@ -168,26 +160,31 @@ def get_dashboard_kpis(
     }
 
 
-@router.get("/conductores", dependencies=[Depends(require_any_role([3, 4]))])
+@router.get("/conductores", dependencies=[Depends(require_role(3))])
 def get_conductores_stats(
-    hotelId: Optional[int] = Query(None),
+    hotel_id: Optional[int] = Query(None, alias="hotelId"),
     fecha_desde: Optional[datetime] = Query(None),
     fecha_hasta: Optional[datetime] = Query(None),
     db: Session = Depends(get_db),
     claims: dict = Depends(get_current_claims)
 ):
     """
-    Estadísticas de conductores:
-    - Viajes completados por conductor
-    - Tasa de aceptación
-    - Tiempo promedio de viaje
+    Estadísticas de conductores.
+    Admin debe pasar hotelId como query parameter.
     """
     role = int(claims.get("role", 0))
-    if role == 4 and hotelId is not None:
-        hotel_id = int(hotelId)
-    else:
-        hotel_id = _hotel_of_user(db, claims)
-        
+    
+    # Determinar el hotel
+    if role == 4:  # Admin
+        if not hotel_id:
+            raise HTTPException(400, "Admin debe especificar hotelId")
+        selected_hotel = hotel_id
+    else:  # Supervisor
+        me = db.query(models.Usuario).get(int(claims["sub"]))
+        if not me or not me.id_hotel:
+            raise HTTPException(403, "Usuario sin hotel")
+        selected_hotel = me.id_hotel
+    
     if not fecha_desde:
         fecha_desde = datetime.utcnow() - timedelta(days=30)
     if not fecha_hasta:
@@ -218,7 +215,7 @@ def get_conductores_stats(
         .join(models.AsignacionViajes, models.Usuario.id_usuario == models.AsignacionViajes.id_conductor)
         .join(models.Viaje, models.AsignacionViajes.id_viaje == models.Viaje.id_viaje)
         .filter(
-            models.Usuario.id_hotel == hotel_id,
+            models.Usuario.id_hotel == selected_hotel,
             models.Usuario.id_tipo_usuario == 2,
             models.Viaje.agendada_para.between(fecha_desde, fecha_hasta)
         )
@@ -251,27 +248,31 @@ def get_conductores_stats(
     }
 
 
-@router.get("/viajes-por-dia", dependencies=[Depends(require_any_role([3, 4]))])
+@router.get("/viajes-por-dia", dependencies=[Depends(require_role(3))])
 def get_viajes_por_dia(
     dias: int = Query(30, description="Número de días hacia atrás"),
-    hotelId: Optional[int] = Query(None),
+    hotel_id: Optional[int] = Query(None, alias="hotelId"),
     db: Session = Depends(get_db),
     claims: dict = Depends(get_current_claims)
 ):
     """
     Viajes por día (útil para gráficos).
-    Devuelve array con fecha y cantidad de viajes.
+    Admin debe pasar hotelId como query parameter.
     """
     role = int(claims.get("role", 0))
-    if role == 4 and hotelId is not None:
-        hotel_id = int(hotelId)
-    else:
-        hotel_id = _hotel_of_user(db, claims)
-
-
-    fecha_desde = datetime.utcnow() - timedelta(days=dias)
     
-
+    # Determinar el hotel
+    if role == 4:  # Admin
+        if not hotel_id:
+            raise HTTPException(400, "Admin debe especificar hotelId")
+        selected_hotel = hotel_id
+    else:  # Supervisor
+        me = db.query(models.Usuario).get(int(claims["sub"]))
+        if not me or not me.id_hotel:
+            raise HTTPException(403, "Usuario sin hotel")
+        selected_hotel = me.id_hotel
+    
+    fecha_desde = datetime.utcnow() - timedelta(days=dias)
     
     resultado = (
         db.query(
@@ -279,7 +280,7 @@ def get_viajes_por_dia(
             func.count(models.Viaje.id_viaje).label("total")
         )
         .filter(
-            models.Viaje.id_hotel == hotel_id,
+            models.Viaje.id_hotel == selected_hotel,
             models.Viaje.agendada_para >= fecha_desde
         )
         .group_by(func.date(models.Viaje.agendada_para))
@@ -293,4 +294,5 @@ def get_viajes_por_dia(
             for fecha, total in resultado
         ]
     }
+
 
