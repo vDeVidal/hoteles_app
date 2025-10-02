@@ -32,3 +32,12 @@ mobile/android/build/
 
 # --- Node / web (si hubiera) ---
 **/node_modules/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+.pytest_cache/
+
