@@ -1,0 +1,19 @@
+name: hoteles_app
+description: Proyecto Flutter conectado a FastAPI
+publish_to: 'none' # porque es un proyecto local
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.9.0 <4.0.0'   # usa la versión de tu Dart
+  flutter: '>=3.22.0'     # si tu flutter es 3.22 o superior
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.7.0
+  flutter_secure_storage: ^9.2.2
+  jwt_decode: ^0.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
