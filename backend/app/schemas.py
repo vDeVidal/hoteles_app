@@ -118,8 +118,10 @@ class UsuarioCreateIn(BaseModel):
     @field_validator("id_tipo_usuario")
     @classmethod
     def valida_tipo(cls, v):
-        if v not in (2, 3):
-            raise ValueError("id_tipo_usuario debe ser 2 (Conductor) o 3 (Supervisor)")
+        if v not in (1, 2, 3):
+            raise ValueError(
+                "id_tipo_usuario debe ser 1 (Huésped), 2 (Conductor) o 3 (Supervisor)"
+            )
         return v
 
     @field_validator("id_estado_actividad")

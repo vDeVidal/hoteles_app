@@ -7,14 +7,17 @@ from typing import Optional
 
 from .. import models
 from ..deps import get_db
-from ..auth_deps import get_current_claims, require_role
+from ..auth_deps import (
+    get_current_claims,
+    require_supervisor_or_admin,
+)
 # Importación necesaria para timestampdiff
 from sqlalchemy import text
 
 router = APIRouter(prefix="/kpis", tags=["kpis"])
 
 
-@router.get("/dashboard", dependencies=[Depends(require_role(3))])
+@router.get("/dashboard", dependencies=[Depends(require_supervisor_or_admin)])
 def get_dashboard_kpis(
     hotel_id: Optional[int] = Query(None, alias="hotelId"),
     fecha_desde: Optional[datetime] = Query(None),
@@ -160,7 +163,7 @@ def get_dashboard_kpis(
     }
 
 
-@router.get("/conductores", dependencies=[Depends(require_role(3))])
+@router.get("/conductores", dependencies=[Depends(require_supervisor_or_admin)])
 def get_conductores_stats(
     hotel_id: Optional[int] = Query(None, alias="hotelId"),
     fecha_desde: Optional[datetime] = Query(None),
@@ -248,7 +251,7 @@ def get_conductores_stats(
     }
 
 
-@router.get("/viajes-por-dia", dependencies=[Depends(require_role(3))])
+@router.get("/viajes-por-dia", dependencies=[Depends(require_supervisor_or_admin)])
 def get_viajes_por_dia(
     dias: int = Query(30, description="Número de días hacia atrás"),
     hotel_id: Optional[int] = Query(None, alias="hotelId"),
