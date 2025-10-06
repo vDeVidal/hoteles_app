@@ -1,4 +1,5 @@
-// lib/pages/users_page.dart
+
+// lib/pages/users_page.dart - CORRECCIÓN FINAL
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -6,21 +7,8 @@ import '../services/hotel_session.dart';
 
 String _clean(String? s) => (s ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
 
-String _fullNameOf(Map<String, dynamic> u) {
-  final nombre = _clean(u['nombre_usuario']);
-  final ap1 = _clean(u['apellido1_usuario']);
-  final ap2 = _clean(u['apellido2_usuario']);
-  final parts = <String>[];
-  if (nombre.isNotEmpty) parts.add(nombre);
-  if (ap1.isNotEmpty) parts.add(ap1);
-  if (ap2.isNotEmpty) parts.add(ap2);
-  return parts.join(' ');
-}
-
 class UsersPage extends StatefulWidget {
-  final bool soloPersonal; // true = solo conductores/supervisores, false = solo usuarios huéspedes
-
-  const UsersPage({super.key, this.soloPersonal = false});
+  const UsersPage({super.key}); // ✅ Sin parámetro soloPersonal
 
   @override
   State<UsersPage> createState() => _UsersPageState();
@@ -40,27 +28,10 @@ class _UsersPageState extends State<UsersPage> {
     if (AuthService.isAdmin) {
       final hid = HotelSession.hotelId;
       if (hid == null) throw 'Selecciona un hotel primero';
-      final users = await _api.listarUsuariosDeMiHotel(hid);
-      return _filterUsers(users);
+      return await _api.listarUsuariosDeMiHotel(hid);
     } else {
-      final users = await _api.listarUsuariosDeMiHotel(null);
-      return _filterUsers(users);
-    }
-  }
-
-  List<dynamic> _filterUsers(List<dynamic> users) {
-    // Admin SIEMPRE ve solo personal (conductores y supervisores)
-    if (AuthService.isAdmin) {
-      return users.where((u) => [1,2, 3].contains(u['id_tipo_usuario'])).toList();
-    }
-
-    // Supervisor: depende del flag soloPersonal
-    if (widget.soloPersonal) {
-      // Solo conductores (2) y supervisores (3)
-      return users.where((u) => [2, 3].contains(u['id_tipo_usuario'])).toList();
-    } else {
-      // Solo usuarios huéspedes (1)
-      return users.where((u) => u['id_tipo_usuario'] == 1).toList();
+      // Supervisor: el backend ya filtra y devuelve SOLO huéspedes
+      return await _api.listarUsuariosDeMiHotel(null);
     }
   }
 
@@ -78,16 +49,19 @@ class _UsersPageState extends State<UsersPage> {
           bottom: MediaQuery.of(context).viewInsets.bottom + 16,
         ),
         child: _CreateUserForm(
-          onCreated: (_) => _reload(),
-          isAdmin: AuthService.isAdmin,
-          hotelId: HotelSession.hotelId,
-          soloPersonal: widget.soloPersonal,
+          onCreated: () {
+            Navigator.pop(context);
+            _reload();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Usuario creado con éxito')),
+            );
+          },
         ),
       ),
     );
   }
 
-  void _openActions(Map<String, dynamic> user) {
+  void _openEdit(Map<String, dynamic> user) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -96,81 +70,109 @@ class _UsersPageState extends State<UsersPage> {
           left: 16, right: 16, top: 16,
           bottom: MediaQuery.of(context).viewInsets.bottom + 16,
         ),
-        child: _EditUserSheet(user: user, onChanged: _reload),
+        child: _EditUserSheet(
+          user: user,
+          onChanged: () {
+            Navigator.pop(context);
+            _reload();
+          },
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: FutureBuilder<List<dynamic>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(child: Text('Error: ${snap.error}'));
-          }
-          final data = snap.data ?? [];
-          if (data.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.people_outline, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(widget.soloPersonal
-                      ? 'Sin personal registrado'
-                      : 'Sin usuarios huéspedes'),
-                ],
-              ),
-            );
-          }
+    // Determinar texto del botón según rol
+    final isAdmin = AuthService.isAdmin;
+    final buttonText = isAdmin ? 'Nuevo Personal' : 'Nuevo Huésped';
 
-          return ListView.separated(
-            itemCount: data.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (_, i) {
-              final u = data[i] as Map<String, dynamic>;
-              final nombre = _fullNameOf(u);
-              final correo = (u['correo_usuario'] ?? '').toString();
-              final tipo = (u['tipo_usuario_nombre'] ?? '—').toString();
-              final disponible = (u['disponible'] == true);
-              final estadoTxt = disponible ? 'Disponible' : 'Sin disponibilidad';
-              return ListTile(
-                leading: const Icon(Icons.person),
-                title: Text(nombre),
-                subtitle: Text('$correo\n$tipo • $estadoTxt'),
-                isThreeLine: true,
-                onTap: () => _openActions(u),
+    return Scaffold(
+      body: RefreshIndicator(
+        onRefresh: _reload,
+        child: FutureBuilder<List<dynamic>>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snap.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text('Error: ${snap.error}'),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _reload,
+                      child: const Text('Reintentar'),
+                    ),
+                  ],
+                ),
               );
-            },
-          );
-        },
+            }
+
+            final data = snap.data ?? [];
+
+            if (data.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.people_outline, size: 64, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    Text(
+                      isAdmin ? 'Sin personal registrado' : 'Sin usuarios huéspedes',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: data.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final u = data[i] as Map<String, dynamic>;
+                final nombre = _clean(u['nombre_usuario']);
+                final correo = _clean(u['correo_usuario']);
+                final tipo = _clean(u['tipo_usuario_nombre']);
+                final disponible = (u['disponible'] == true);
+                final estadoTxt = disponible ? 'Disponible' : 'Sin disponibilidad';
+
+                return ListTile(
+                  leading: CircleAvatar(
+                    child: Text(nombre.isNotEmpty ? nombre[0].toUpperCase() : '?'),
+                  ),
+                  title: Text(nombre.isEmpty ? 'Sin nombre' : nombre),
+                  subtitle: Text('$correo\n$tipo • $estadoTxt'),
+                  isThreeLine: true,
+                  onTap: () => _openEdit(u),
+                  trailing: const Icon(Icons.edit, size: 20),
+                );
+              },
+            );
+          },
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreate,
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: Text(buttonText),
       ),
     );
   }
 }
 
-// -------------------- Crear Usuario --------------------
+// ==================== Crear Usuario ====================
 class _CreateUserForm extends StatefulWidget {
-  final void Function(Map<String, dynamic>) onCreated;
-  final bool isAdmin;
-  final int? hotelId;
-  final bool soloPersonal;
-
-  const _CreateUserForm({
-    required this.onCreated,
-    required this.isAdmin,
-    required this.hotelId,
-    required this.soloPersonal,
-  });
+  final VoidCallback onCreated;
+  const _CreateUserForm({required this.onCreated});
 
   @override
   State<_CreateUserForm> createState() => _CreateUserFormState();
@@ -186,7 +188,7 @@ class _CreateUserFormState extends State<_CreateUserForm> {
   final _tel = TextEditingController();
   final _correo = TextEditingController();
 
-  int _tipo = 2; // Por defecto conductor para personal
+  int _tipo = 1;
   int _estado = 1;
   bool _loading = false;
   String? _error;
@@ -194,17 +196,14 @@ class _CreateUserFormState extends State<_CreateUserForm> {
   @override
   void initState() {
     super.initState();
-    // Admin siempre crea personal (conductor o supervisor)
-    // Supervisor: si soloPersonal=true crea personal, si no crea huéspedes
-    if (widget.isAdmin || widget.soloPersonal) {
-      _tipo = 2; // Por defecto conductor
-    } else {
-      _tipo = 1; // Usuario huésped
-    }
+    // Admin: conductor por defecto
+    // Supervisor: huésped por defecto (forzado)
+    _tipo = AuthService.isAdmin ? 2 : 1;
   }
 
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
+
     setState(() { _loading = true; _error = null; });
 
     try {
@@ -221,18 +220,15 @@ class _CreateUserFormState extends State<_CreateUserForm> {
         "contrasena_usuario": "12345678",
         "id_tipo_usuario": _tipo,
         "id_estado_actividad": _estado,
-        if (widget.isAdmin && widget.hotelId != null) "id_hotel": widget.hotelId,
+        if (AuthService.isAdmin && HotelSession.hotelId != null)
+          "id_hotel": HotelSession.hotelId,
         "must_change_password": true,
       };
 
-      final created = await _api.crearUsuario(body);
+      await _api.crearUsuario(body);
 
       if (mounted) {
-        Navigator.pop(context);
-        widget.onCreated(created);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Usuario creado con éxito')),
-        );
+        widget.onCreated();
       }
     } catch (e) {
       setState(() { _error = 'No se pudo crear: $e'; });
@@ -243,63 +239,138 @@ class _CreateUserFormState extends State<_CreateUserForm> {
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin = AuthService.isAdmin;
+    final title = isAdmin ? 'Nuevo Personal' : 'Nuevo Huésped';
+
     return Form(
       key: _form,
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              widget.soloPersonal ? 'Nuevo Personal' : 'Nuevo Usuario Huésped',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+
+            TextFormField(
+              controller: _nombre,
+              decoration: const InputDecoration(
+                labelText: 'Nombre',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+              ),
+              validator: (v) => v == null || v.trim().isEmpty ? 'Requerido' : null,
             ),
-            TextFormField(controller: _nombre, decoration: const InputDecoration(labelText: 'Nombre'), validator: (v)=> v==null||v.isEmpty?'Requerido':null),
-            TextFormField(controller: _ap1, decoration: const InputDecoration(labelText: 'Apellido paterno'), validator: (v)=> v==null||v.isEmpty?'Requerido':null),
-            TextFormField(controller: _ap2, decoration: const InputDecoration(labelText: 'Apellido materno')),
-            TextFormField(controller: _tel, decoration: const InputDecoration(labelText: 'Teléfono')),
+            const SizedBox(height: 12),
+
+            TextFormField(
+              controller: _ap1,
+              decoration: const InputDecoration(
+                labelText: 'Apellido paterno',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) => v == null || v.trim().isEmpty ? 'Requerido' : null,
+            ),
+            const SizedBox(height: 12),
+
+            TextFormField(
+              controller: _ap2,
+              decoration: const InputDecoration(
+                labelText: 'Apellido materno',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            TextFormField(
+              controller: _tel,
+              decoration: const InputDecoration(
+                labelText: 'Teléfono',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.phone),
+              ),
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 12),
+
             TextFormField(
               controller: _correo,
-              decoration: const InputDecoration(labelText: 'Correo'),
-              validator: (v)=> (v==null||!v.contains('@'))?'Correo inválido':null,
+              decoration: const InputDecoration(
+                labelText: 'Correo electrónico',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.email),
+              ),
+              keyboardType: TextInputType.emailAddress,
+              validator: (v) => (v == null || !v.contains('@')) ? 'Correo inválido' : null,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
 
-            // Dropdown de tipo: varía según rol
-            if (widget.isAdmin || widget.soloPersonal)
+            // Solo admin ve el dropdown de tipo
+            if (isAdmin)
               DropdownButtonFormField<int>(
                 value: _tipo,
-                decoration: const InputDecoration(labelText: 'Tipo de personal'),
+                decoration: const InputDecoration(
+                  labelText: 'Tipo de personal',
+                  border: OutlineInputBorder(),
+                ),
                 items: const [
                   DropdownMenuItem(value: 2, child: Text('Conductor')),
                   DropdownMenuItem(value: 3, child: Text('Supervisor')),
                 ],
-                onChanged: (v)=> setState(()=> _tipo = v ?? 2),
-              )
-            else
-            // Supervisor creando huéspedes: tipo fijo en 1, no mostrar dropdown
-              const SizedBox.shrink(),
+                onChanged: (v) => setState(() => _tipo = v ?? 2),
+              ),
+
+            if (isAdmin) const SizedBox(height: 12),
 
             DropdownButtonFormField<int>(
               value: _estado,
-              decoration: const InputDecoration(labelText: 'Estado'),
+              decoration: const InputDecoration(
+                labelText: 'Estado',
+                border: OutlineInputBorder(),
+              ),
               items: const [
                 DropdownMenuItem(value: 1, child: Text('Activo')),
                 DropdownMenuItem(value: 2, child: Text('Inactivo')),
               ],
-              onChanged: (v)=> setState(()=> _estado = v ?? 1),
+              onChanged: (v) => setState(() => _estado = v ?? 1),
             ),
 
-            if (_error != null)
-              Padding(padding: const EdgeInsets.only(top:8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: _loading? null : _submit,
-                  child: _loading? const CircularProgressIndicator() : const Text('Crear'),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red))),
+                  ],
                 ),
               ),
-            ]),
+            ],
+
+            const SizedBox(height: 20),
+
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _loading ? null : _submit,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: _loading
+                    ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Text('Crear Usuario'),
+              ),
+            ),
           ],
         ),
       ),
@@ -307,11 +378,11 @@ class _CreateUserFormState extends State<_CreateUserForm> {
   }
 }
 
-// -------------------- Editar / Suspender / Reactivar --------------------
+// ==================== Editar Usuario ====================
 class _EditUserSheet extends StatefulWidget {
   final Map<String, dynamic> user;
-  final VoidCallback? onChanged;
-  const _EditUserSheet({required this.user, this.onChanged});
+  final VoidCallback onChanged;
+  const _EditUserSheet({required this.user, required this.onChanged});
 
   @override
   State<_EditUserSheet> createState() => _EditUserSheetState();
@@ -333,27 +404,30 @@ class _EditUserSheetState extends State<_EditUserSheet> {
   void initState() {
     super.initState();
 
-    String rawNombre = _clean(widget.user['nombre_usuario']?.toString());
-    String rawAp1 = _clean(widget.user['apellido1_usuario']?.toString());
-    String rawAp2 = _clean(widget.user['apellido2_usuario']?.toString());
+    // CORRECCIÓN: Si nombre_usuario tiene el nombre completo, parsearlo SOLO para edición
+    final nombreCompleto = _clean(widget.user['nombre_usuario']);
+    String nombre = nombreCompleto;
+    String ap1 = _clean(widget.user['apellido1_usuario']);
+    String ap2 = _clean(widget.user['apellido2_usuario']);
 
-    if (rawAp1.isEmpty && rawAp2.isEmpty) {
-      final tokens = rawNombre.split(' ').where((t) => t.isNotEmpty).toList();
-      if (tokens.length >= 3) {
-        rawNombre = tokens.first;
-        rawAp1 = tokens[1];
-        rawAp2 = tokens.sublist(2).join(' ');
-      } else if (tokens.length == 2) {
-        rawNombre = tokens.first;
-        rawAp1 = tokens.last;
+    // Si los apellidos están vacíos pero hay nombre completo, intentar parsear
+    if (ap1.isEmpty && ap2.isEmpty && nombreCompleto.contains(' ')) {
+      final partes = nombreCompleto.split(' ');
+      if (partes.length >= 3) {
+        nombre = partes[0];
+        ap1 = partes[1];
+        ap2 = partes.sublist(2).join(' ');
+      } else if (partes.length == 2) {
+        nombre = partes[0];
+        ap1 = partes[1];
       }
     }
 
-    _nombre = TextEditingController(text: rawNombre);
-    _ap1 = TextEditingController(text: rawAp1);
-    _ap2 = TextEditingController(text: rawAp2);
-    _correo = TextEditingController(text: _clean(widget.user['correo_usuario']?.toString()));
-    _tel = TextEditingController(text: _clean(widget.user['telefono_usuario']?.toString()));
+    _nombre = TextEditingController(text: nombre);
+    _ap1 = TextEditingController(text: ap1);
+    _ap2 = TextEditingController(text: ap2);
+    _correo = TextEditingController(text: _clean(widget.user['correo_usuario']));
+    _tel = TextEditingController(text: _clean(widget.user['telefono_usuario']));
 
     _tipo = (widget.user['id_tipo_usuario'] as int?) ?? 2;
     _estado = (widget.user['id_estado_actividad'] as int?) ?? 1;
@@ -387,14 +461,19 @@ class _EditUserSheetState extends State<_EditUserSheet> {
           'id_estado_actividad': _estado,
         },
       );
+
       if (mounted) {
-        Navigator.pop(context);
-        widget.onChanged?.call();
+        widget.onChanged();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Usuario actualizado con éxito')),
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo guardar')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -405,80 +484,169 @@ class _EditUserSheetState extends State<_EditUserSheet> {
         final motivoCtrl = TextEditingController();
         return AlertDialog(
           title: const Text('Motivo de suspensión'),
-          content: TextField(controller: motivoCtrl, decoration: const InputDecoration(hintText: 'Escribe el motivo')),
+          content: TextField(
+            controller: motivoCtrl,
+            decoration: const InputDecoration(hintText: 'Escribe el motivo'),
+            maxLines: 3,
+          ),
           actions: [
-            TextButton(onPressed: ()=> Navigator.pop(ctx, null), child: const Text('Cancelar')),
-            FilledButton(onPressed: ()=> Navigator.pop(ctx, motivoCtrl.text.trim()), child: const Text('Suspender')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, motivoCtrl.text.trim()),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Suspender'),
+            ),
           ],
         );
       },
     );
+
     if (motivo == null || motivo.isEmpty) return;
-    await _api.suspenderUsuario(widget.user['id_usuario'] as int, motivo);
-    if (mounted) {
-      Navigator.pop(context);
-      widget.onChanged?.call();
+
+    try {
+      await _api.suspenderUsuario(widget.user['id_usuario'] as int, motivo);
+      if (mounted) {
+        widget.onChanged?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Usuario suspendido')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
   Future<void> _reactivar() async {
-    await _api.reactivarUsuario(widget.user['id_usuario'] as int);
-    if (mounted) {
-      Navigator.pop(context);
-      widget.onChanged?.call();
+    try {
+      await _api.reactivarUsuario(widget.user['id_usuario'] as int);
+      if (mounted) {
+        widget.onChanged?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Usuario reactivado')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final suspendido = (widget.user['is_suspended'] == true);
+
     return SingleChildScrollView(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 16, right: 16, top: 16,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Editar usuario', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            TextField(controller: _nombre, decoration: const InputDecoration(labelText: 'Nombre')),
-            TextField(controller: _ap1, decoration: const InputDecoration(labelText: 'Apellido paterno')),
-            TextField(controller: _ap2, decoration: const InputDecoration(labelText: 'Apellido materno')),
-            TextField(controller: _correo, decoration: const InputDecoration(labelText: 'Correo')),
-            TextField(controller: _tel, decoration: const InputDecoration(labelText: 'Teléfono')),
-            const SizedBox(height: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Editar usuario',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
 
-            DropdownButtonFormField<int>(
-              value: _tipo,
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('Usuario Huésped')),
-                DropdownMenuItem(value: 2, child: Text('Conductor')),
-                DropdownMenuItem(value: 3, child: Text('Supervisor')),
-              ],
-              onChanged: (v) => setState(() => _tipo = v ?? 2),
-              decoration: const InputDecoration(labelText: 'Tipo'),
+          TextField(
+            controller: _nombre,
+            decoration: const InputDecoration(
+              labelText: 'Nombre',
+              border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 12),
 
-            DropdownButtonFormField<int>(
-              value: _estado,
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('Activo')),
-                DropdownMenuItem(value: 2, child: Text('Inactivo')),
-              ],
-              onChanged: (v) => setState(() => _estado = v ?? 1),
-              decoration: const InputDecoration(labelText: 'Estado'),
+          TextField(
+            controller: _ap1,
+            decoration: const InputDecoration(
+              labelText: 'Apellido paterno',
+              border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 12),
 
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: FilledButton(onPressed: _guardar, child: const Text('Guardar'))),
-            ]),
-            const SizedBox(height: 12),
-            Row(children: [
+          TextField(
+            controller: _ap2,
+            decoration: const InputDecoration(
+              labelText: 'Apellido materno',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          TextField(
+            controller: _correo,
+            decoration: const InputDecoration(
+              labelText: 'Correo',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          TextField(
+            controller: _tel,
+            decoration: const InputDecoration(
+              labelText: 'Teléfono',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          DropdownButtonFormField<int>(
+            value: _tipo,
+            decoration: const InputDecoration(
+              labelText: 'Tipo',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 1, child: Text('Usuario Huésped')),
+              DropdownMenuItem(value: 2, child: Text('Conductor')),
+              DropdownMenuItem(value: 3, child: Text('Supervisor')),
+            ],
+            onChanged: (v) => setState(() => _tipo = v ?? 2),
+          ),
+          const SizedBox(height: 12),
+
+          DropdownButtonFormField<int>(
+            value: _estado,
+            decoration: const InputDecoration(
+              labelText: 'Estado',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 1, child: Text('Activo')),
+              DropdownMenuItem(value: 2, child: Text('Inactivo')),
+            ],
+            onChanged: (v) => setState(() => _estado = v ?? 1),
+          ),
+
+          const SizedBox(height: 20),
+
+          FilledButton(
+            onPressed: _guardar,
+            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+            child: const Text('Guardar Cambios'),
+          ),
+
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
               Expanded(
                 child: OutlinedButton(
                   onPressed: suspendido ? null : _suspender,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                   child: const Text('Suspender'),
                 ),
               ),
@@ -486,12 +654,15 @@ class _EditUserSheetState extends State<_EditUserSheet> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: suspendido ? _reactivar : null,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                   child: const Text('Reactivar'),
                 ),
               ),
-            ]),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

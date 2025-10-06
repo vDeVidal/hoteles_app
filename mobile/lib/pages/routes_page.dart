@@ -157,7 +157,6 @@ class _RouteFormState extends State<_RouteForm> {
         'precio_ruta': double.tryParse(_precio.text.replaceAll(',', '.').trim()),
         'duracion_aproximada': int.tryParse(_dur.text.trim()),
         'id_estado_actividad': _estado,
-        // El id_hotel lo fija el backend (según token + HotelSession si es admin)
       };
 
       if (widget.existing == null) {
@@ -168,7 +167,7 @@ class _RouteFormState extends State<_RouteForm> {
 
       if (mounted) {
         Navigator.pop(context);
-        widget.onSaved();
+        widget.onSaved(); // ✅ Actualiza inmediatamente
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(widget.existing == null
               ? 'Ruta creada con éxito'

@@ -1,3 +1,4 @@
+// lib/pages/home_page.dart - CORRECCIÓN SUPERVISOR
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/hotel_session.dart';
@@ -10,14 +11,6 @@ import 'assignments_page.dart';
 import 'conductor_trips_page.dart';
 import 'conductor_vehiculo_page.dart';
 import 'profile_page.dart';
-import 'vehicles_page.dart';
-import 'routes_page.dart';
-import 'assignments_page.dart';
-import 'conductor_trips_page.dart';
-import 'profile_page.dart';
-
-
-
 
 class HomePage extends StatefulWidget {
   final int role;
@@ -37,7 +30,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _ensureHotelForNonAdmin() async {
-    // Para supervisor/conductor: si no tenemos hotel en memoria, lo pedimos 1 vez.
     if (!AuthService.isAdmin && HotelSession.hotelId == null) {
       try {
         final h = await _api.miHotel();
@@ -48,7 +40,7 @@ class _HomePageState extends State<HomePage> {
           if (mounted) setState(() {});
         }
       } catch (_) {
-        // si falla, simplemente dejamos el título por defecto
+        // Ignorar error
       }
     }
   }
@@ -64,7 +56,6 @@ class _HomePageState extends State<HomePage> {
         appBar: AppBar(
           title: Text('Bienvenido(a) a $hotelTitle'),
           actions: [
-            // Botón cambiar hotel solo para admin
             if (AuthService.isAdmin)
               IconButton(
                 tooltip: 'Cambiar hotel',
@@ -86,29 +77,31 @@ class _HomePageState extends State<HomePage> {
 
   List<_TabDef> _tabsFor(int r) {
     switch (r) {
-      case 4: // Administrador - SOLO gestión global
+      case 4: // Administrador - Solo gestiona personal (conductores y supervisores)
         return [
           _TabDef('Dashboard', Icons.dashboard, const DashboardPage()),
-          _TabDef('Usuarios', Icons.people, const UsersPage()),
+          _TabDef('Personal', Icons.people, const UsersPage()), // Conductores y Supervisores
           _TabDef('Reportes', Icons.bar_chart, const Center(child: Text('Reportes (próximamente)'))),
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
-      case 3: // Supervisor - Gestión completa del hotel
+
+      case 3: // Supervisor - Solo gestiona huéspedes y operaciones
         return [
-          _TabDef('Dashboard', Icons.dashboard, const DashboardPage()),
-          _TabDef('Asignar Viajes', Icons.assignment, const AssignmentsPage()),
-          _TabDef('Usuarios', Icons.people, const UsersPage()), // Solo usuarios huéspedes
-          ///_TabDef('Personal', Icons.badge, const UsersPage(soloPersonal: true)), // Conductores/Supervisores
-          _TabDef('Cond-Veh', Icons.car_rental, const ConductorVehiculoPage()), // Asignar vehículos a conductores
+          _TabDef('Dash', Icons.dashboard, const DashboardPage()),
+          _TabDef('Asignar', Icons.assignment, const AssignmentsPage()),
+          _TabDef('Huéspedes', Icons.people, const UsersPage()), // SOLO huéspedes
+          _TabDef('Cond-Veh', Icons.car_rental, const ConductorVehiculoPage()),
           _TabDef('Vehículos', Icons.local_taxi, const VehiclesPage()),
           _TabDef('Rutas', Icons.alt_route, const RoutesPage()),
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
+
       case 2: // Conductor
         return [
           _TabDef('Mis Viajes', Icons.local_taxi, const ConductorTripsPage()),
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
+
       default: // Usuario
         return [
           _TabDef('Inicio', Icons.home, const Center(child: Text('Solicitar Viajes (próximamente)'))),

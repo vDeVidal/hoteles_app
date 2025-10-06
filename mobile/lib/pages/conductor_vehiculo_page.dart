@@ -284,7 +284,7 @@ class _AssignVehiculoDialogState extends State<_AssignVehiculoDialog> {
 
       if (mounted) {
         Navigator.pop(context);
-        widget.onAssigned();
+        widget.onAssigned(); //  Actualiza la lista inmediatamente
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Vehículo asignado con éxito')),
         );

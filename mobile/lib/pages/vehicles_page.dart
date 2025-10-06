@@ -174,7 +174,7 @@ class _VehicleFormState extends State<_VehicleForm> {
 
       if (mounted) {
         Navigator.pop(context);
-        widget.onSaved();
+        widget.onSaved(); // ✅ Actualiza inmediatamente
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(widget.existing == null
               ? 'Vehículo creado con éxito'
@@ -187,6 +187,7 @@ class _VehicleFormState extends State<_VehicleForm> {
       if (mounted) setState(() { _loading = false; });
     }
   }
+
 
   Future<void> _addMarcaDialog() async {
     final ctrl = TextEditingController();
