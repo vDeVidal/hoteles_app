@@ -63,7 +63,7 @@ class _AdminShellState extends State<AdminShell> with SingleTickerProviderStateM
         controller: _controller,
         children: const [
           DashboardPage(),
-          UsersPage(),
+          UsersPage(soloPersonal: true),
           Center(child: Text('Reportes (próximamente)')),
           ProfilePage(),
         ],

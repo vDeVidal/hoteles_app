@@ -17,6 +17,12 @@ String _fullNameOf(Map<String, dynamic> u) {
   return parts.join(' ');
 }
 
+int? _tipoUsuario(dynamic raw) {
+  if (raw is int) return raw;
+  if (raw is String) return int.tryParse(raw);
+  return null;
+}
+
 class UsersPage extends StatefulWidget {
   final bool soloPersonal; // true = solo conductores/supervisores, false = solo usuarios huéspedes
 
@@ -49,21 +55,20 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   List<dynamic> _filterUsers(List<dynamic> users) {
-    // Admin ve todos los perfiles del hotel (huéspedes, conductores y supervisores)
-    if (AuthService.isAdmin) {
+    // Personal (conductores y supervisores)
+    if (widget.soloPersonal || AuthService.isAdmin) {
       return users
-          .where((u) => [1, 2, 3].contains(u['id_tipo_usuario']))
+          .where((u) {
+            final tipo = _tipoUsuario(u['id_tipo_usuario']);
+            return tipo == 2 || tipo == 3;
+          })
           .toList();
     }
 
-    // Supervisor: depende del flag soloPersonal
-    if (widget.soloPersonal) {
-      // Solo conductores (2) y supervisores (3)
-      return users.where((u) => [2, 3].contains(u['id_tipo_usuario'])).toList();
-    } else {
-      // Solo usuarios huéspedes (1)
-      return users.where((u) => u['id_tipo_usuario'] == 1).toList();
-    }
+    // Huéspedes únicamente
+    return users
+        .where((u) => _tipoUsuario(u['id_tipo_usuario']) == 1)
+        .toList();
   }
 
   Future<void> _reload() async {

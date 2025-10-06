@@ -89,7 +89,7 @@ class _HomePageState extends State<HomePage> {
       case 4: // Administrador - SOLO gestión global
         return [
           _TabDef('Dashboard', Icons.dashboard, const DashboardPage()),
-          _TabDef('Usuarios', Icons.people, const UsersPage()),
+          _TabDef('Usuarios', Icons.people, const UsersPage(soloPersonal: true)),
           _TabDef('Reportes', Icons.bar_chart, const Center(child: Text('Reportes (próximamente)'))),
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
