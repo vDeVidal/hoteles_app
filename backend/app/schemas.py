@@ -109,7 +109,7 @@ class UsuarioCreateIn(BaseModel):
     apellido2_usuario: Optional[str] = None
     telefono_usuario: Optional[str] = None
     correo_usuario: EmailStr
-    id_tipo_usuario: int  # 2=Conductor, 3=Supervisor
+    id_tipo_usuario: int  # 1=Huésped, 2=Conductor, 3=Supervisor
     id_estado_actividad: int = 1  # 1=Activo
     id_hotel: Optional[int] = None
     contrasena_usuario: Optional[str] = None
@@ -118,8 +118,10 @@ class UsuarioCreateIn(BaseModel):
     @field_validator("id_tipo_usuario")
     @classmethod
     def valida_tipo(cls, v):
-        if v not in (2, 3):
-            raise ValueError("id_tipo_usuario debe ser 2 (Conductor) o 3 (Supervisor)")
+        if v not in (1, 2, 3):
+            raise ValueError(
+                "id_tipo_usuario debe ser 1 (Huésped), 2 (Conductor) o 3 (Supervisor)"
+            )
         return v
 
     @field_validator("id_estado_actividad")

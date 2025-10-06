@@ -24,19 +24,32 @@ def crear_usuario(
     claims: dict = Depends(get_current_claims),
 ):
     """
-    Crea un nuevo usuario (conductor o supervisor).
-    Solo administradores pueden crear usuarios.
-    """
-    # 1) Validar que quien llama sea admin
-    admin_id = int(claims.get("sub", 0) or 0)
-    admin = db.query(models.Usuario).get(admin_id)
-    if not admin:
-        raise HTTPException(status_code=401, detail="No autenticado")
-    if getattr(admin, "id_tipo_usuario", 0) != 4:
-        raise HTTPException(status_code=403, detail="Solo un administrador puede crear usuarios")
+    Crea un nuevo usuario.
 
-    # 2) Hotel destino
-    hotel_id = payload.id_hotel or getattr(admin, "id_hotel", None)
+    - Administradores pueden crear cualquier tipo (huésped, conductor o supervisor)
+      y elegir hotel explícitamente.
+    - Supervisores solo pueden crear huéspedes para su propio hotel.
+    """
+    actor_id = int(claims.get("sub", 0) or 0)
+    actor = db.query(models.Usuario).get(actor_id)
+    if not actor:
+        raise HTTPException(status_code=401, detail="No autenticado")
+
+    role = int(claims.get("role", getattr(actor, "id_tipo_usuario", 0)) or 0)
+    if role not in (3, 4):
+        raise HTTPException(status_code=403, detail="No tiene permisos para crear usuarios")
+
+    target_tipo = payload.id_tipo_usuario
+    if role == 3 and target_tipo != 1:
+        raise HTTPException(status_code=403, detail="Un supervisor solo puede crear huéspedes")
+
+    if role == 4:
+        hotel_id = payload.id_hotel or getattr(actor, "id_hotel", None)
+    else:
+        hotel_id = getattr(actor, "id_hotel", None)
+        if not hotel_id:
+            raise HTTPException(status_code=403, detail="Supervisor sin hotel asignado")
+
     if not hotel_id:
         raise HTTPException(status_code=400, detail="Debe indicarse id_hotel")
 
@@ -87,7 +100,7 @@ def listar_usuarios_mios(
     claims: dict = Depends(get_current_claims),
 ):
     """
-    Lista usuarios (conductores y supervisores) del hotel.
+    Lista usuarios del hotel (huéspedes, conductores y supervisores).
     - Admin puede especificar hotelId; si no, usa su hotel
     - Otros roles usan su hotel automáticamente
     """
@@ -133,7 +146,7 @@ def _build_listado(db: Session, selected_hotel: int):
         )
         .join(models.TipoUsuario, models.Usuario.id_tipo_usuario == models.TipoUsuario.id_tipo_usuario)
         .filter(models.Usuario.id_hotel == selected_hotel)
-        .filter(models.Usuario.id_tipo_usuario.in_([2, 3]))
+        .filter(models.Usuario.id_tipo_usuario.in_([1, 2, 3]))
         .order_by(models.Usuario.nombre_usuario.asc())
         .all()
     )

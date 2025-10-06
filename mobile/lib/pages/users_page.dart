@@ -49,9 +49,11 @@ class _UsersPageState extends State<UsersPage> {
   }
 
   List<dynamic> _filterUsers(List<dynamic> users) {
-    // Admin SIEMPRE ve solo personal (conductores y supervisores)
+    // Admin ve todos los perfiles del hotel (huéspedes, conductores y supervisores)
     if (AuthService.isAdmin) {
-      return users.where((u) => [2, 3].contains(u['id_tipo_usuario'])).toList();
+      return users
+          .where((u) => [1, 2, 3].contains(u['id_tipo_usuario']))
+          .toList();
     }
 
     // Supervisor: depende del flag soloPersonal

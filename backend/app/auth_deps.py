@@ -35,3 +35,16 @@ def require_any_role(allowed: list[int]):
                 status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado"
             )
     return _checker
+
+
+def require_supervisor_or_admin(claims: Dict[str, Any] = Depends(get_current_claims)) -> None:
+    """Permite acceso únicamente a usuarios con rol de supervisor (3) o admin (4)."""
+    role = claims.get("role")
+    try:
+        role = int(role)
+    except Exception:
+        role = 0
+    if role not in {3, 4}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado"
+        )
