@@ -5,9 +5,107 @@ import '../services/auth_service.dart';
 import '../services/hotel_session.dart';
 
 String _clean(String? s) => (s ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+String _fullName(Map<String, dynamic> data) {
+  final nombre = _clean(data['nombre_usuario']);
+  final ap1 = _clean(data['apellido1_usuario']);
+  final ap2 = _clean(data['apellido2_usuario']);
+  final apellidos = [ap1, ap2].where((p) => p.isNotEmpty).toList();
+
+  var base = nombre;
+  if (apellidos.isNotEmpty) {
+    final combined = apellidos.join(' ');
+    base = _removeEndingIgnoreCase(base, combined);
+    for (final apellido in apellidos) {
+      base = _removeEndingIgnoreCase(base, apellido);
+    }
+  }
+
+  final parts = <String>[];
+  final trimmedBase = base.trim();
+  if (trimmedBase.isNotEmpty) {
+    parts.add(trimmedBase);
+  }
+
+  final existingTokens = trimmedBase
+      .split(' ')
+      .where((t) => t.isNotEmpty)
+      .map((t) => t.toLowerCase())
+      .toSet();
+
+  for (final apellido in apellidos) {
+    final lower = apellido.toLowerCase();
+    if (lower.isEmpty || existingTokens.contains(lower)) continue;
+    parts.add(apellido);
+    existingTokens.add(lower);
+  }
+
+  if (parts.isEmpty) {
+    final fallback = [nombre, ...apellidos].where((p) => p.isNotEmpty).toList();
+    return fallback.join(' ');
+  }
+
+  return parts.join(' ');
+}
+
+String _extractFirstName(String nombreCompleto, String ap1, String ap2) {
+  var result = nombreCompleto.trim();
+  final apellidos = [ap1, ap2].where((a) => a.isNotEmpty).toList();
+
+  if (result.isEmpty) {
+    return result;
+  }
+
+  if (apellidos.isNotEmpty) {
+    final combined = apellidos.join(' ');
+    result = _removeEndingIgnoreCase(result, combined);
+    for (final apellido in apellidos) {
+      result = _removeEndingIgnoreCase(result, apellido);
+    }
+  }
+
+  if (result.isEmpty && nombreCompleto.isNotEmpty) {
+    final parts = nombreCompleto.split(' ');
+    if (parts.isNotEmpty) {
+      result = parts.first;
+    }
+  }
+
+  return result.trim();
+}
+
+String _removeEndingIgnoreCase(String value, String ending) {
+  final trimmedValue = value.trimRight();
+  final trimmedEnding = ending.trim();
+
+  if (trimmedValue.isEmpty || trimmedEnding.isEmpty) {
+    return trimmedValue;
+  }
+
+  final lowerValue = trimmedValue.toLowerCase();
+  final lowerEnding = trimmedEnding.toLowerCase();
+
+  if (lowerValue == lowerEnding) {
+    return '';
+  }
+
+  if (lowerValue.endsWith(' $lowerEnding')) {
+    return trimmedValue
+        .substring(0, trimmedValue.length - trimmedEnding.length - 1)
+        .trimRight();
+  }
+
+  if (lowerValue.endsWith(lowerEnding)) {
+    return trimmedValue
+        .substring(0, trimmedValue.length - trimmedEnding.length)
+        .trimRight();
+  }
+
+  return trimmedValue;
+}
+
 
 class UsersPage extends StatefulWidget {
-  const UsersPage({super.key}); // ✅ Sin parámetro soloPersonal
+  const UsersPage({super.key}); // Sin parámetro soloPersonal
 
   @override
   State<UsersPage> createState() => _UsersPageState();
@@ -138,7 +236,7 @@ class _UsersPageState extends State<UsersPage> {
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (_, i) {
                 final u = data[i] as Map<String, dynamic>;
-                final nombre = _clean(u['nombre_usuario']);
+                final nombre = _fullName(u);
                 final correo = _clean(u['correo_usuario']);
                 final tipo = _clean(u['tipo_usuario_nombre']);
                 final disponible = (u['disponible'] == true);
@@ -419,6 +517,11 @@ class _EditUserSheetState extends State<_EditUserSheet> {
       } else if (partes.length == 2) {
         nombre = partes[0];
         ap1 = partes[1];
+      }
+    } else {
+      final deduced = _extractFirstName(nombreCompleto, ap1, ap2);
+      if (deduced.isNotEmpty) {
+        nombre = deduced;
       }
     }
 

@@ -153,7 +153,7 @@ def _build_listado(db: Session, selected_hotel: int, tipo_filter: list):
         )
         .join(models.TipoUsuario, models.Usuario.id_tipo_usuario == models.TipoUsuario.id_tipo_usuario)
         .filter(models.Usuario.id_hotel == selected_hotel)
-        .filter(models.Usuario.id_tipo_usuario.in_([1, 2, 3]))
+        .filter(models.Usuario.id_tipo_usuario.in_(tipo_filter))
         .order_by(name_expr.asc())
         .all()
     )

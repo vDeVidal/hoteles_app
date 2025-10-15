@@ -2,6 +2,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decode/jwt_decode.dart';
+import 'hotel_session.dart';
 
 class AuthService {
   // ===== Persistencia =====
@@ -42,6 +43,7 @@ class AuthService {
 
   // ===== Guardar/Recuperar/Cerrar sesión =====
   static Future<void> _persistSession(String jwt) async {
+    HotelSession.clear();
     _token = jwt;
     _claims = Jwt.parseJwt(jwt);
     await _storage.write(key: 'auth_token', value: jwt);
@@ -58,6 +60,7 @@ class AuthService {
   static Future<void> logout() async {
     _token = null;
     _claims = null;
+    HotelSession.clear();
     await _storage.delete(key: 'auth_token');
   }
 

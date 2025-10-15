@@ -51,30 +51,35 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final tabs = _tabsFor(widget.role);
-    final hotelTitle = HotelSession.hotelName ?? 'Hoteles App';
+    return ValueListenableBuilder<String?>(
+      valueListenable: HotelSession.notifier,
+      builder: (context, currentHotel, _) {
+        final hotelTitle = _hotelTitleFor(currentHotel);
 
-    return DefaultTabController(
-      length: tabs.length,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text('Bienvenido(a) a $hotelTitle'),
-          actions: [
-            if (AuthService.isAdmin)
-              IconButton(
-                tooltip: 'Cambiar hotel',
-                onPressed: () {
-                  HotelSession.clear();
-                  Navigator.of(context).pushNamedAndRemoveUntil('/select_hotel', (_) => false);
-                },
-                icon: const Icon(Icons.swap_horiz),
-              ),
-          ],
-        ),
-        body: TabBarView(children: tabs.map((t) => t.page).toList()),
-        bottomNavigationBar: TabBar(
-          tabs: tabs.map((t) => Tab(icon: Icon(t.icon), text: t.label)).toList(),
-        ),
-      ),
+        return DefaultTabController(
+          length: tabs.length,
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text('Bienvenido(a) a $hotelTitle'),
+              actions: [
+                if (AuthService.isAdmin)
+                  IconButton(
+                    tooltip: 'Cambiar hotel',
+                    onPressed: () {
+                      HotelSession.clear();
+                      Navigator.of(context).pushNamedAndRemoveUntil('/select_hotel', (_) => false);
+                    },
+                    icon: const Icon(Icons.swap_horiz),
+                  ),
+              ],
+            ),
+            body: TabBarView(children: tabs.map((t) => t.page).toList()),
+            bottomNavigationBar: TabBar(
+              tabs: tabs.map((t) => Tab(icon: Icon(t.icon), text: t.label)).toList(),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -112,6 +117,26 @@ class _HomePageState extends State<HomePage> {
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
     }
+  }
+  String _hotelTitleFor(String? notifierValue) {
+    final candidate = (notifierValue ?? HotelSession.hotelName)?.trim();
+    if (candidate != null && candidate.isNotEmpty) {
+      return candidate;
+    }
+
+    final claim = AuthService.claim('nombre_hotel');
+    if (claim is String && claim.trim().isNotEmpty) {
+      return claim.trim();
+    }
+
+    if (claim != null) {
+      final claimString = '${claim ?? ''}'.trim();
+      if (claimString.isNotEmpty) {
+        return claimString;
+      }
+    }
+
+    return 'Hoteles App';
   }
 }
 

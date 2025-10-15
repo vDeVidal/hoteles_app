@@ -5,7 +5,7 @@ from typing import List
 
 from .. import models, schemas
 from ..deps import get_db
-from ..auth_deps import get_current_claims, require_role
+from ..auth_deps import get_current_claims, require_any_role, require_role
 
 router = APIRouter(prefix="/rutas", tags=["rutas"])
 
@@ -17,17 +17,16 @@ def _hotel_of_user(db: Session, claims: dict) -> int:
         raise HTTPException(403, "Usuario sin hotel")
     return me.id_hotel
 
-
-@router.get("", response_model=List[schemas.RutaOut], dependencies=[Depends(require_role(3))])
+@router.get(
+    "",
+    response_model=List[schemas.RutaOut],
+    dependencies=[Depends(require_any_role([1, 2, 3, 4]))],
+)
 def listar_rutas(
     db: Session = Depends(get_db),
     claims: dict = Depends(get_current_claims)
 ):
-    """
-    Lista todas las rutas del hotel del usuario actual.
-    Solo rutas activas (id_estado_actividad = 1).
-    Requiere rol mínimo: Supervisor (3).
-    """
+
     hotel_id = _hotel_of_user(db, claims)
     return (
         db.query(models.Ruta)
