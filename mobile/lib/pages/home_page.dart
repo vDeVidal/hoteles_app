@@ -1,15 +1,18 @@
-// lib/pages/home_page.dart - CORRECCIÓN SUPERVISOR
+// lib/pages/home_page.dart - ACTUALIZACIÓN COMPLETA
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/hotel_session.dart';
 import '../services/api_client.dart';
 import 'dashboard_page.dart';
 import 'users_page.dart';
+import 'guests_page.dart'; // ✅ AGREGAR ESTA LÍNEA
 import 'vehicles_page.dart';
 import 'routes_page.dart';
 import 'assignments_page.dart';
 import 'conductor_trips_page.dart';
 import 'conductor_vehiculo_page.dart';
+import 'guest_request_trip_page.dart'; // ✅ NUEVA: Solicitud de viajes para huéspedes
+import 'guest_my_trips_page.dart'; // ✅ NUEVA: Mis viajes para huéspedes
 import 'profile_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -89,7 +92,7 @@ class _HomePageState extends State<HomePage> {
         return [
           _TabDef('Dash', Icons.dashboard, const DashboardPage()),
           _TabDef('Asignar', Icons.assignment, const AssignmentsPage()),
-          _TabDef('Huéspedes', Icons.people, const UsersPage()), // SOLO huéspedes
+          _TabDef('Huéspedes', Icons.people, const GuestsPage()), // ✅ CAMBIAR ESTA LÍNEA
           _TabDef('Cond-Veh', Icons.car_rental, const ConductorVehiculoPage()),
           _TabDef('Vehículos', Icons.local_taxi, const VehiclesPage()),
           _TabDef('Rutas', Icons.alt_route, const RoutesPage()),
@@ -102,9 +105,10 @@ class _HomePageState extends State<HomePage> {
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
 
-      default: // Usuario
+      default: // Usuario (Huésped) - ✅ ACTUALIZAR ESTA SECCIÓN
         return [
-          _TabDef('Inicio', Icons.home, const Center(child: Text('Solicitar Viajes (próximamente)'))),
+          _TabDef('Solicitar', Icons.directions_car, const GuestRequestTripPage()), // ✅ Nueva página
+          _TabDef('Mis Viajes', Icons.list, const Center(child: Text('Mis viajes (próximamente)'))),
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
     }

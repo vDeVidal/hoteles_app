@@ -325,6 +325,22 @@ class ViajeOut(BaseModel):
     hora_pedida: datetime
     agendada_para: datetime
     id_estado_viaje: int
+    
+    # ✅ Información adicional del solicitante
+    solicitante_nombre: Optional[str] = None
+    solicitante_telefono: Optional[str] = None
+    
+    # ✅ Información de la ruta
+    ruta_nombre: Optional[str] = None
+    origen_ruta: Optional[str] = None
+    destino_ruta: Optional[str] = None
+    
+    # ✅ Información del conductor (si está asignado)
+    conductor: Optional[dict] = None
+    
+    # ✅ Información del vehículo (si está asignado)
+    vehiculo: Optional[dict] = None
+    
     class Config: 
         from_attributes = True
 
