@@ -271,11 +271,9 @@ class _AssignDialog extends StatefulWidget {
 class _AssignDialogState extends State<_AssignDialog> {
   final _api = ApiClient();
 
-  List<Map<String, dynamic>> _conductores = [];
-  List<Map<String, dynamic>> _vehiculos = [];
+  List<Map<String, dynamic>> _conductoresDisponibles = [];
 
   int? _conductorSeleccionado;
-  int? _vehiculoSeleccionado;
 
   bool _loading = false;
   bool _loadingData = true;
@@ -289,16 +287,11 @@ class _AssignDialogState extends State<_AssignDialog> {
 
   Future<void> _loadData() async {
     try {
-      final conductores = await _api.listarUsuariosDeMiHotel(null);
-      final vehiculos = await _api.listarVehiculos();
+      final asignaciones = await _api.listarAsignacionesConductorVehiculo();
 
       setState(() {
-        _conductores = conductores
-            .where((u) => u['id_tipo_usuario'] == 2 && u['disponible'] == true)
-            .cast<Map<String, dynamic>>()
-            .toList();
-        _vehiculos = vehiculos
-            .where((v) => v['id_estado_vehiculo'] == 1) // Solo disponibles
+        _conductoresDisponibles = asignaciones
+            .where((a) => (a['disponible'] == true))
             .cast<Map<String, dynamic>>()
             .toList();
         _loadingData = false;
@@ -312,8 +305,24 @@ class _AssignDialogState extends State<_AssignDialog> {
   }
 
   Future<void> _asignar() async {
-    if (_conductorSeleccionado == null || _vehiculoSeleccionado == null) {
-      _showError('Debes seleccionar conductor y vehículo');
+    if (_conductorSeleccionado == null) {
+      _showError('Debes seleccionar un conductor disponible');
+      return;
+    }
+
+    final Map<String, dynamic> asignacion = _conductoresDisponibles.firstWhere(
+          (a) => a['id_usuario'] == _conductorSeleccionado,
+      orElse: () => <String, dynamic>{},
+    );
+
+    if (asignacion.isEmpty) {
+      _showError('No se encontró información del conductor seleccionado');
+      return;
+    }
+
+    final idVehiculo = asignacion['id_vehiculo'] as int?;
+    if (idVehiculo == null) {
+      _showError('El conductor no tiene un vehículo asignado');
       return;
     }
 
@@ -326,7 +335,7 @@ class _AssignDialogState extends State<_AssignDialog> {
       await _api.asignarViaje(
         widget.viaje['id_viaje'] as int,
         _conductorSeleccionado!,
-        _vehiculoSeleccionado!,
+        idVehiculo: idVehiculo,
       );
 
       if (mounted) {
@@ -419,7 +428,7 @@ class _AssignDialogState extends State<_AssignDialog> {
 
               // Selector de conductor
               Text(
-                'Conductor (${_conductores.length} disponibles)',
+                'Conductor (${_conductoresDisponibles.length} disponibles)',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
@@ -427,7 +436,7 @@ class _AssignDialogState extends State<_AssignDialog> {
               ),
               const SizedBox(height: 8),
 
-              if (_conductores.isEmpty)
+              if (_conductoresDisponibles.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -457,18 +466,19 @@ class _AssignDialogState extends State<_AssignDialog> {
                     filled: true,
                     fillColor: Colors.grey.shade50,
                   ),
-                  items: _conductores.map((c) {
+                  items: _conductoresDisponibles.map((c) {
                     return DropdownMenuItem(
                       value: c['id_usuario'] as int,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            c['nombre_usuario'] as String,
+                            c['conductor_nombre'] as String? ?? 'Conductor',
                             style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
+                        if (c['vehiculo_info'] != null)
                           Text(
-                            c['correo_usuario'] as String? ?? '',
+                            'Vehículo: ${c['vehiculo_info']}',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey.shade600,
@@ -479,71 +489,6 @@ class _AssignDialogState extends State<_AssignDialog> {
                     );
                   }).toList(),
                   onChanged: (v) => setState(() => _conductorSeleccionado = v),
-                ),
-              const SizedBox(height: 20),
-
-              // Selector de vehículo
-              Text(
-                'Vehículo (${_vehiculos.length} disponibles)',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              if (_vehiculos.isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.warning_amber, color: Colors.orange),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'No hay vehículos disponibles',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                DropdownButtonFormField<int>(
-                  value: _vehiculoSeleccionado,
-                  decoration: InputDecoration(
-                    labelText: 'Seleccionar vehículo',
-                    border: const OutlineInputBorder(),
-                    prefixIcon: const Icon(Icons.directions_car),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                  ),
-                  items: _vehiculos.map((v) {
-                    return DropdownMenuItem(
-                      value: v['id_vehiculo'] as int,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${v['patente']} - ${v['marca_nombre'] ?? 'Sin marca'}',
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          Text(
-                            '${v['modelo'] ?? 'Sin modelo'} • Capacidad: ${v['capacidad'] ?? 'N/A'}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (v) => setState(() => _vehiculoSeleccionado = v),
                 ),
 
               if (_error != null) ...[
@@ -582,9 +527,8 @@ class _AssignDialogState extends State<_AssignDialog> {
           child: const Text('Cancelar'),
         ),
         FilledButton.icon(
-          onPressed: _loading || _conductores.isEmpty || _vehiculos.isEmpty
-              ? null
-              : _asignar,
+          onPressed:
+            _loading || _conductoresDisponibles.isEmpty ? null : _asignar,
           icon: _loading
               ? const SizedBox(
             width: 16,

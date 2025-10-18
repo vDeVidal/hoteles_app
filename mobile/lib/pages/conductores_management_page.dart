@@ -394,9 +394,8 @@ class _AsignarViajeDialog extends StatefulWidget {
 class _AsignarViajeDialogState extends State<_AsignarViajeDialog> {
   final _api = ApiClient();
   List<Map<String, dynamic>> _viajes = [];
-  List<Map<String, dynamic>> _vehiculos = [];
+  Map<String, dynamic>? _vehiculoAsignado;
   int? _viajeSeleccionado;
-  int? _vehiculoSeleccionado;
   bool _loading = false;
   bool _loadingData = true;
   String? _error;
@@ -410,11 +409,18 @@ class _AsignarViajeDialogState extends State<_AsignarViajeDialog> {
   Future<void> _loadData() async {
     try {
       final viajes = await _api.listarViajes(estado: 1); // Solo PENDIENTES
-      final vehiculos = await _api.listarVehiculos();
+      final asignaciones = await _api.listarAsignacionesConductorVehiculo();
+
+      final Map<String, dynamic> asignacion = asignaciones
+          .cast<Map<String, dynamic>>()
+          .firstWhere(
+            (a) => a['id_usuario'] == widget.idConductor,
+        orElse: () => <String, dynamic>{},
+      );
 
       setState(() {
         _viajes = viajes.cast<Map<String, dynamic>>();
-        _vehiculos = vehiculos.cast<Map<String, dynamic>>();
+        _vehiculoAsignado = asignacion.isEmpty ? null : asignacion;
         _loadingData = false;
       });
     } catch (e) {
@@ -426,9 +432,19 @@ class _AsignarViajeDialogState extends State<_AsignarViajeDialog> {
   }
 
   Future<void> _asignar() async {
-    if (_viajeSeleccionado == null || _vehiculoSeleccionado == null) {
+    if (_viajeSeleccionado == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Debes seleccionar viaje y vehículo')),
+        const SnackBar(content: Text('Debes seleccionar un viaje pendiente')),
+      );
+      return;
+    }
+
+    final vehiculoId = _vehiculoAsignado?['id_vehiculo'] as int?;
+    if (vehiculoId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Asigna un vehículo al conductor antes de asignar viajes'),
+        ),
       );
       return;
     }
@@ -442,7 +458,7 @@ class _AsignarViajeDialogState extends State<_AsignarViajeDialog> {
       await _api.asignarViaje(
         _viajeSeleccionado!,
         widget.idConductor,
-        _vehiculoSeleccionado!,
+        idVehiculo: vehiculoId,
       );
 
       if (mounted) {
@@ -487,22 +503,65 @@ class _AsignarViajeDialogState extends State<_AsignarViajeDialog> {
               onChanged: (v) => setState(() => _viajeSeleccionado = v),
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              value: _vehiculoSeleccionado,
-              decoration: const InputDecoration(
-                labelText: 'Vehículo',
-                border: OutlineInputBorder(),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Vehículo asignado',
+                style: Theme.of(context).textTheme.titleSmall,
               ),
-              items: _vehiculos.map((v) {
-                return DropdownMenuItem(
-                  value: v['id_vehiculo'] as int,
-                  child: Text(
-                    '${v['patente']} - ${v['marca_nombre'] ?? ''}',
-                  ),
-                );
-              }).toList(),
-              onChanged: (v) => setState(() => _vehiculoSeleccionado = v),
             ),
+            const SizedBox(height: 8),
+            if (_vehiculoAsignado == null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Este conductor no tiene vehículo activo. Asigna uno desde la pestaña correspondiente.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.directions_car, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _vehiculoAsignado!['vehiculo_info'] as String? ?? 'Vehículo asignado',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            'Asignado desde: ${_formatFecha(_vehiculoAsignado!['hora_asignacion'] as String?)}',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (_error != null) ...[
               const SizedBox(height: 16),
               Text(_error!, style: const TextStyle(color: Colors.red)),

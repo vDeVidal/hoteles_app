@@ -84,8 +84,11 @@ def listar_asignaciones_actuales(
     asignaciones = (
         db.query(
             models.ConductorVehiculo,
+            models.Usuario.id_usuario,
             models.Usuario.nombre_usuario,
             models.Usuario.apellido1_usuario,
+            models.Usuario.id_estado_actividad,
+            models.Usuario.is_suspended,
             models.Vehiculo.patente,
             models.MarcaVehiculo.nombre_marca_vehiculo
         )
@@ -101,13 +104,16 @@ def listar_asignaciones_actuales(
     )
     
     resultado = []
-    for cv, nombre, apellido, patente, marca in asignaciones:
+    for cv, id_usuario, nombre, apellido, estado_actividad, is_suspended, patente, marca in asignaciones:
+        disponible = estado_actividad == 1 and not bool(is_suspended)
         resultado.append({
             "id_conductor_vehiculo": cv.id_conductor_vehiculo,
             "id_conductor": cv.id_conductor,
+            "id_usuario": id_usuario,
             "conductor_nombre": f"{nombre} {apellido}",
             "id_vehiculo": cv.id_vehiculo,
             "vehiculo_info": f"{patente} - {marca}",
+            "disponible": disponible,
             "hora_asignacion": cv.hora_asignacion.isoformat(),
         })
     
