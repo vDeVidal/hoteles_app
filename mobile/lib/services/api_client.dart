@@ -355,3 +355,37 @@ class ApiClient {
     }
   }
 }
+
+Future<Map<String, dynamic>> obtenerMiVehiculo() async {
+  try {
+    final res = await _dio.get('/conductor-vehiculo/mi-vehiculo');
+    return Map<String, dynamic>.from(res.data as Map);
+  } on DioException catch (e) {
+    _throw(e);
+  }
+}
+
+Future<Map<String, dynamic>> obtenerEstadoTurno() async {
+  try {
+    final res = await _dio.get('/conductor-vehiculo/estado-turno');
+    return Map<String, dynamic>.from(res.data as Map);
+  } on DioException catch (e) {
+    _throw(e);
+  }
+}
+
+Future<void> iniciarTurno() async {
+  try {
+    await _dio.post('/conductor-vehiculo/iniciar-turno');
+  } on DioException catch (e) {
+    _throw(e);
+  }
+}
+
+Future<void> finalizarTurno() async {
+  try {
+    await _dio.post('/conductor-vehiculo/finalizar-turno');
+  } on DioException catch (e) {
+    _throw(e);
+  }
+}

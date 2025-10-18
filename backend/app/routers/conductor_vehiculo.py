@@ -10,6 +10,62 @@ from ..auth_deps import get_current_claims, require_role
 
 router = APIRouter(prefix="/conductor-vehiculo", tags=["conductor-vehiculo"])
 
+@router.get("/mi-vehiculo")
+def obtener_mi_vehiculo(
+    db: Session = Depends(get_db),
+    claims: dict = Depends(get_current_claims)
+):
+    """
+    Obtiene el vehículo actualmente asignado al conductor.
+    """
+    user_id = int(claims["sub"])
+    
+    # Buscar conductor
+    conductor = (
+        db.query(models.Conductor)
+        .filter(models.Conductor.id_usuario == user_id)
+        .first()
+    )
+    
+    if not conductor:
+        raise HTTPException(404, "No eres conductor")
+    
+    # Buscar asignación activa
+    asignacion = (
+        db.query(
+            models.ConductorVehiculo,
+            models.Vehiculo.patente,
+            models.Vehiculo.modelo,
+            models.Vehiculo.anio,
+            models.Vehiculo.capacidad,
+            models.MarcaVehiculo.nombre_marca_vehiculo
+        )
+        .join(models.Vehiculo, models.ConductorVehiculo.id_vehiculo == models.Vehiculo.id_vehiculo)
+        .join(models.MarcaVehiculo, models.Vehiculo.id_marca_vehiculo == models.MarcaVehiculo.id_marca_vehiculo)
+        .filter(
+            models.ConductorVehiculo.id_conductor == conductor.id_conductor,
+            models.ConductorVehiculo.hora_fin_asignacion.is_(None)
+        )
+        .first()
+    )
+    
+    if not asignacion:
+        return {"tiene_vehiculo": False}
+    
+    cv, patente, modelo, anio, capacidad, marca = asignacion
+    
+    return {
+        "tiene_vehiculo": True,
+        "id_conductor_vehiculo": cv.id_conductor_vehiculo,
+        "patente": patente,
+        "marca": marca,
+        "modelo": modelo,
+        "anio": anio,
+        "capacidad": capacidad,
+        "descripcion": f"{patente} - {marca} {modelo or ''}".strip(),
+        "asignado_desde": cv.hora_asignacion.isoformat()
+    }
+
 
 @router.get("", response_model=List[dict], dependencies=[Depends(require_role(3))])
 def listar_asignaciones_actuales(
@@ -124,6 +180,116 @@ def asignar_vehiculo_a_conductor(
         "message": "Vehículo asignado correctamente"
     }
 
+@router.post("/iniciar-turno")
+def iniciar_turno(
+    db: Session = Depends(get_db),
+    claims: dict = Depends(get_current_claims)
+):
+    """Conductor inicia su turno (marca como disponible)."""
+    user_id = int(claims["sub"])
+    
+    conductor = db.query(models.Conductor).filter(
+        models.Conductor.id_usuario == user_id
+    ).first()
+    
+    if not conductor:
+        raise HTTPException(404, "No eres conductor")
+    
+    # Buscar o crear disponibilidad
+    disponibilidad = (
+        db.query(models.DisponibilidadConductores)
+        .filter(models.DisponibilidadConductores.id_conductor == conductor.id_conductor)
+        .first()
+    )
+    
+    if not disponibilidad:
+        disponibilidad = models.DisponibilidadConductores(
+            id_conductor=conductor.id_conductor,
+            dias_disponibles_semanales=7,
+            inicio_turno=datetime.utcnow().time(),
+            fin_turno=None
+        )
+        db.add(disponibilidad)
+    else:
+        disponibilidad.dias_disponibles_semanales = 7
+        disponibilidad.inicio_turno = datetime.utcnow().time()
+        disponibilidad.fin_turno = None
+    
+    # Marcar usuario como disponible
+    usuario = db.query(models.Usuario).get(user_id)
+    usuario.id_estado_actividad = 1  # Activo
+    
+    db.commit()
+    return {"ok": True, "message": "Turno iniciado", "disponible": True}
+
+
+@router.post("/finalizar-turno")
+def finalizar_turno(
+    db: Session = Depends(get_db),
+    claims: dict = Depends(get_current_claims)
+):
+    """Conductor finaliza su turno (marca como no disponible)."""
+    user_id = int(claims["sub"])
+    
+    conductor = db.query(models.Conductor).filter(
+        models.Conductor.id_usuario == user_id
+    ).first()
+    
+    if not conductor:
+        raise HTTPException(404, "No eres conductor")
+    
+    # Actualizar disponibilidad
+    disponibilidad = (
+        db.query(models.DisponibilidadConductores)
+        .filter(models.DisponibilidadConductores.id_conductor == conductor.id_conductor)
+        .first()
+    )
+    
+    if disponibilidad:
+        disponibilidad.dias_disponibles_semanales = 0
+        disponibilidad.fin_turno = datetime.utcnow().time()
+    
+    # Marcar usuario como no disponible
+    usuario = db.query(models.Usuario).get(user_id)
+    usuario.id_estado_actividad = 2  # Inactivo
+    
+    db.commit()
+    return {"ok": True, "message": "Turno finalizado", "disponible": False}
+
+
+@router.get("/estado-turno")
+def obtener_estado_turno(
+    db: Session = Depends(get_db),
+    claims: dict = Depends(get_current_claims)
+):
+    """Obtiene el estado actual del turno del conductor."""
+    user_id = int(claims["sub"])
+    
+    conductor = db.query(models.Conductor).filter(
+        models.Conductor.id_usuario == user_id
+    ).first()
+    
+    if not conductor:
+        raise HTTPException(404, "No eres conductor")
+    
+    usuario = db.query(models.Usuario).get(user_id)
+    disponibilidad = (
+        db.query(models.DisponibilidadConductores)
+        .filter(models.DisponibilidadConductores.id_conductor == conductor.id_conductor)
+        .first()
+    )
+    
+    esta_disponible = (
+        usuario.id_estado_actividad == 1 and
+        disponibilidad and
+        disponibilidad.dias_disponibles_semanales > 0
+    )
+    
+    return {
+        "disponible": esta_disponible,
+        "inicio_turno": disponibilidad.inicio_turno.isoformat() if disponibilidad and disponibilidad.inicio_turno else None,
+        "fin_turno": disponibilidad.fin_turno.isoformat() if disponibilidad and disponibilidad.fin_turno else None
+    }
 
 @router.patch("/{id_conductor_vehiculo}/finalizar", dependencies=[Depends(require_role(3))])
 def finalizar_asignacion(

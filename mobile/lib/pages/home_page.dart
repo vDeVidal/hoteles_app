@@ -5,15 +5,16 @@ import '../services/hotel_session.dart';
 import '../services/api_client.dart';
 import 'dashboard_page.dart';
 import 'users_page.dart';
-import 'guests_page.dart'; // ✅ AGREGAR ESTA LÍNEA
+import 'guests_page.dart';
 import 'vehicles_page.dart';
 import 'routes_page.dart';
 import 'assignments_page.dart';
 import 'conductor_trips_page.dart';
 import 'conductor_vehiculo_page.dart';
-import 'guest_request_trip_page.dart'; // ✅ NUEVA: Solicitud de viajes para huéspedes
-import 'guest_my_trips_page.dart'; // ✅ NUEVA: Mis viajes para huéspedes
+import 'guest_request_trip_page.dart';
+import 'guest_my_trips_page.dart';
 import 'profile_page.dart';
+import 'conductor_vehicle_info_page.dart';
 
 class HomePage extends StatefulWidget {
   final int role;
@@ -97,7 +98,7 @@ class _HomePageState extends State<HomePage> {
         return [
           _TabDef('Dash', Icons.dashboard, const DashboardPage()),
           _TabDef('Asignar', Icons.assignment, const AssignmentsPage()),
-          _TabDef('Huéspedes', Icons.people, const GuestsPage()), // ✅ CAMBIAR ESTA LÍNEA
+          _TabDef('Huéspedes', Icons.people, const GuestsPage()), //  CAMBIAR ESTA LÍNEA
           _TabDef('Cond-Veh', Icons.car_rental, const ConductorVehiculoPage()),
           _TabDef('Vehículos', Icons.local_taxi, const VehiclesPage()),
           _TabDef('Rutas', Icons.alt_route, const RoutesPage()),
@@ -107,6 +108,7 @@ class _HomePageState extends State<HomePage> {
       case 2: // Conductor
         return [
           _TabDef('Mis Viajes', Icons.local_taxi, const ConductorTripsPage()),
+          _TabDef('Mi Vehículo', Icons.directions_car, const ConductorVehicleInfoPage()), // ✅ NUEVO
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
 

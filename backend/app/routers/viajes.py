@@ -83,61 +83,79 @@ def crear_viaje(
 def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict | None:
     """
     Asigna automáticamente un conductor y vehículo disponibles al viaje.
-    Retorna info de la asignación o None si no hay recursos.
     """
-    # Buscar conductores disponibles del hotel
-    conductores_disponibles = (
-        db.query(models.Conductor)
-        .join(models.Usuario, models.Conductor.id_usuario == models.Usuario.id_usuario)
+    # ✅ Buscar conductores CON vehículo asignado y disponibles
+    conductores_con_vehiculo = (
+        db.query(
+            models.Usuario.id_usuario,
+            models.ConductorVehiculo.id_vehiculo,
+            models.Usuario.nombre_usuario,
+            models.Usuario.apellido1_usuario,
+            models.Vehiculo.patente
+        )
+        .join(models.Conductor, models.Usuario.id_usuario == models.Conductor.id_usuario)
+        .join(
+            models.ConductorVehiculo, 
+            models.Conductor.id_conductor == models.ConductorVehiculo.id_conductor
+        )
+        .join(models.Vehiculo, models.ConductorVehiculo.id_vehiculo == models.Vehiculo.id_vehiculo)
+        .join(
+            models.DisponibilidadConductores,
+            models.Conductor.id_conductor == models.DisponibilidadConductores.id_conductor
+        )
         .filter(
             models.Usuario.id_hotel == hotel_id,
-            models.Usuario.id_tipo_usuario == 2,  # Conductor
-            models.Usuario.id_estado_actividad == 1,  # Activo
+            models.Usuario.id_tipo_usuario == 2,
+            models.Usuario.id_estado_actividad == 1,
             models.Usuario.is_suspended == False,
-            models.Conductor.id_estado_actividad == 1,
-            )
-        .all()
-    )
-    
-    if not conductores_disponibles:
-        print(f"⚠️ No hay conductores disponibles para el viaje {viaje.id_viaje}")
-        return None
-    
-    # Buscar vehículos disponibles
-    vehiculos_disponibles = (
-        db.query(models.Vehiculo)
-        .filter(
-            models.Vehiculo.id_hotel == hotel_id,
-            models.Vehiculo.id_estado_vehiculo == 1  # Disponible
+            models.ConductorVehiculo.hora_fin_asignacion.is_(None),  # Vehículo actualmente asignado
+            models.DisponibilidadConductores.dias_disponibles_semanales > 0  # Tiene disponibilidad
         )
         .all()
     )
     
-    if not vehiculos_disponibles:
-        print(f"⚠️ No hay vehículos disponibles para el viaje {viaje.id_viaje}")
+    if not conductores_con_vehiculo:
+        print(f"⚠️ No hay conductores con vehículo asignado disponibles")
         return None
     
-    # Verificar que el conductor no tenga otro viaje a la misma hora
-    conductor_seleccionado = None
-    for conductor in conductores_disponibles:
+    # Verificar conflictos de horario
+    for id_conductor, id_vehiculo, nombre, apellido, patente in conductores_con_vehiculo:
         conflicto = (
             db.query(models.AsignacionViajes)
             .join(models.Viaje, models.AsignacionViajes.id_viaje == models.Viaje.id_viaje)
             .filter(
-                models.AsignacionViajes.id_conductor == conductor.id_conductor,
+                models.AsignacionViajes.id_conductor == id_conductor,
                 models.Viaje.agendada_para == viaje.agendada_para,
-                models.Viaje.id_estado_viaje.in_([2, 3, 4])  # ASIGNADO, ACEPTADO, EN_CURSO
+                models.Viaje.id_estado_viaje.in_([2, 3, 4])
             )
             .first()
         )
         
         if not conflicto:
-            conductor_seleccionado = conductor
-            break
+            # Crear asignación
+            asignacion = models.AsignacionViajes(
+                id_viaje=viaje.id_viaje,
+                id_conductor=id_conductor,
+                id_vehiculo=id_vehiculo,
+                asignado_a_id_usuario=None,
+                hora_asignacion=datetime.utcnow()
+            )
+            
+            viaje.id_estado_viaje = 2  # ASIGNADO
+            db.add(asignacion)
+            db.flush()
+            
+            print(f"✅ Viaje {viaje.id_viaje} asignado a conductor {id_conductor} con vehículo {patente}")
+            
+            return {
+                'id_conductor': id_conductor,
+                'id_vehiculo': id_vehiculo,
+                'conductor_nombre': f"{nombre} {apellido}".strip(),
+                'vehiculo_patente': patente
+            }
     
-    if not conductor_seleccionado:
-        print(f"⚠️ Todos los conductores tienen conflictos de horario")
-        return None
+    print(f"⚠️ Todos los conductores tienen conflictos de horario")
+    return None
     
     # Seleccionar vehículo (elegir el primero disponible o aleatorio)
     vehiculo_seleccionado = choice(vehiculos_disponibles)
@@ -172,20 +190,15 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
     }
 
 
-@router.get("", response_model=List[schemas.ViajeOut])
+@router.get("")
 def listar_viajes(
-    estado: Optional[int] = Query(None, description="Filtrar por estado (1=PENDIENTE, 2=ASIGNADO, etc)"),
+    estado: Optional[int] = Query(None, description="Filtrar por estado"),
     fecha_desde: Optional[datetime] = None,
     fecha_hasta: Optional[datetime] = None,
     db: Session = Depends(get_db),
     claims: dict = Depends(get_current_claims)
 ):
-    """
-    Lista viajes según el rol del usuario:
-    - Admin/Supervisor: todos los viajes de su hotel
-    - Conductor: viajes asignados a él (con info del solicitante)
-    - Usuario: solo sus propios viajes
-    """
+    """Lista viajes según el rol del usuario"""
     user_id = int(claims["sub"])
     role = int(claims.get("role", 0))
     me = db.query(models.Usuario).get(user_id)
@@ -193,32 +206,23 @@ def listar_viajes(
     if not me:
         raise HTTPException(404, "Usuario no encontrado")
     
-    # Query mejorada con JOIN para incluir info del solicitante
-    q = (
-        db.query(
-            models.Viaje,
-            models.Usuario.nombre_usuario.label("solicitante_nombre"),
-            models.Usuario.apellido1_usuario.label("solicitante_apellido1"),
-            models.Usuario.telefono_usuario.label("solicitante_telefono"),
-            models.Ruta.nombre_ruta.label("ruta_nombre"),
-            models.Ruta.origen_ruta.label("origen"),
-            models.Ruta.destino_ruta.label("destino")
-        )
-        .join(models.Usuario, models.Viaje.pedida_por_id_usuario == models.Usuario.id_usuario)
-        .join(models.Ruta, models.Viaje.id_ruta == models.Ruta.id_ruta)
-    )
+    # Query base SIN JOINs primero
+    q = db.query(models.Viaje)
     
+    # Filtrar según rol
     if role in (3, 4):  # Supervisor/Admin
         if not me.id_hotel:
             raise HTTPException(403, "Sin hotel asignado")
         q = q.filter(models.Viaje.id_hotel == me.id_hotel)
     elif role == 2:  # Conductor
-        q = (
-            q.join(models.AsignacionViajes)
-            .join(models.Conductor, models.AsignacionViajes.id_conductor == models.Conductor.id_conductor)
-            .filter(models.Conductor.id_usuario == me.id_usuario)
+        # Solo viajes asignados a este conductor
+        q = q.join(
+            models.AsignacionViajes,
+            models.Viaje.id_viaje == models.AsignacionViajes.id_viaje
+        ).filter(
+            models.AsignacionViajes.id_conductor == me.id_usuario
         )
-    else:  # Usuario normal
+    else:  # Usuario
         q = q.filter(models.Viaje.pedida_por_id_usuario == user_id)
     
     # Filtros opcionales
@@ -229,26 +233,31 @@ def listar_viajes(
     if fecha_hasta:
         q = q.filter(models.Viaje.agendada_para <= fecha_hasta)
     
-    rows = q.order_by(models.Viaje.agendada_para.desc()).all()
+    viajes = q.order_by(models.Viaje.agendada_para.desc()).all()
     
-    # ✅ Construir respuesta con info adicional
+    # Construir respuesta con info adicional
     resultado = []
-    for viaje, sol_nombre, sol_ap1, sol_tel, ruta_nombre, origen, destino in rows:
+    for viaje in viajes:
+        # Obtener info del solicitante
+        solicitante = db.query(models.Usuario).get(viaje.pedida_por_id_usuario)
+        
         viaje_dict = {
             "id_viaje": viaje.id_viaje,
             "id_hotel": viaje.id_hotel,
             "id_ruta": viaje.id_ruta,
             "pedida_por_id_usuario": viaje.pedida_por_id_usuario,
-            "hora_pedida": viaje.hora_pedida,
-            "agendada_para": viaje.agendada_para,
+            "hora_pedida": viaje.hora_pedida.isoformat() if viaje.hora_pedida else None,
+            "agendada_para": viaje.agendada_para.isoformat() if viaje.agendada_para else None,
             "id_estado_viaje": viaje.id_estado_viaje,
-            # ✅ Info adicional para conductor
-            "solicitante_nombre": f"{sol_nombre} {sol_ap1 or ''}".strip(),
-            "solicitante_telefono": sol_tel,
-            "ruta_nombre": ruta_nombre,
-            "origen_ruta": origen,
-            "destino_ruta": destino
+            "solicitante_nombre": "",
+            "solicitante_telefono": None,
         }
+        
+        if solicitante:
+            nombre_completo = f"{solicitante.nombre_usuario} {solicitante.apellido1_usuario or ''}".strip()
+            viaje_dict["solicitante_nombre"] = nombre_completo
+            viaje_dict["solicitante_telefono"] = solicitante.telefono_usuario
+        
         resultado.append(viaje_dict)
     
     return resultado
