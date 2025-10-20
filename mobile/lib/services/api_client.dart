@@ -209,18 +209,16 @@ class ApiClient {
     }
   }
 
-  Future<void> asignarViaje(int idViaje, int idConductor, {int? idVehiculo}) async {
+  Future<void> asignarViaje(int idViaje, int idConductor, int idVehiculo) async {
     try {
-      final data = {
+      await _dio.post('/viajes/$idViaje/asignar', data: {
         'id_conductor': idConductor,
-        if (idVehiculo != null) 'id_vehiculo': idVehiculo,
-      };
-      await _dio.post('/viajes/$idViaje/asignar', data: data);
+        // Ya no enviamos id_vehiculo
+      });
     } on DioException catch (e) {
       _throw(e);
     }
   }
-
   Future<void> aceptarViaje(int idViaje) async {
     try {
       await _dio.patch('/viajes/$idViaje/aceptar');

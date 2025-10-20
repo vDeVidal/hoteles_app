@@ -1,4 +1,4 @@
-// lib/pages/assignments_page.dart - VERSIÓN MEJORADA
+// lib/pages/assignments_page.dart - VERSIÓN CORREGIDA
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 
@@ -19,7 +19,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> with AutomaticKeepAli
   @override
   void initState() {
     super.initState();
-    _futureViajes = _api.listarViajes(estado: 1); // Solo PENDIENTES
+    _futureViajes = _api.listarViajes(estado: 1);
   }
 
   Future<void> _reload() async {
@@ -35,7 +35,7 @@ class _AssignmentsPageState extends State<AssignmentsPage> with AutomaticKeepAli
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Para AutomaticKeepAliveClientMixin
+    super.build(context);
 
     return Scaffold(
       body: RefreshIndicator(
@@ -101,7 +101,6 @@ class _AssignmentsPageState extends State<AssignmentsPage> with AutomaticKeepAli
   }
 }
 
-// ================ Card de viaje pendiente ================
 class _ViajeCardPendiente extends StatelessWidget {
   final Map<String, dynamic> viaje;
   final VoidCallback onAssign;
@@ -124,7 +123,6 @@ class _ViajeCardPendiente extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -168,8 +166,6 @@ class _ViajeCardPendiente extends StatelessWidget {
               ],
             ),
             const Divider(height: 24),
-
-            // Detalles
             _DetailRow(
               icon: Icons.schedule,
               label: 'Salida programada',
@@ -181,16 +177,13 @@ class _ViajeCardPendiente extends StatelessWidget {
               label: 'Ruta',
               value: 'Ruta #$idRuta',
             ),
-
             const SizedBox(height: 16),
-
-            // Botón de asignar
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: onAssign,
                 icon: const Icon(Icons.assignment_ind),
-                label: const Text('Asignar Conductor y Vehículo'),
+                label: const Text('Asignar Conductor'),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
@@ -271,7 +264,7 @@ class _AssignDialog extends StatefulWidget {
 class _AssignDialogState extends State<_AssignDialog> {
   final _api = ApiClient();
 
-  List<Map<String, dynamic>> _conductoresDisponibles = [];
+  List<Map<String, dynamic>> _conductores = []; // ✅ NOMBRE CORRECTO
 
   int? _conductorSeleccionado;
 
@@ -287,11 +280,14 @@ class _AssignDialogState extends State<_AssignDialog> {
 
   Future<void> _loadData() async {
     try {
-      final asignaciones = await _api.listarAsignacionesConductorVehiculo();
+      final conductores = await _api.listarUsuariosDeMiHotel(null);
 
       setState(() {
-        _conductoresDisponibles = asignaciones
-            .where((a) => (a['disponible'] == true))
+        _conductores = conductores
+            .where((u) =>
+        u['id_tipo_usuario'] == 2 &&
+            u['disponible'] == true &&
+            u['is_suspended'] == false)
             .cast<Map<String, dynamic>>()
             .toList();
         _loadingData = false;
@@ -306,23 +302,7 @@ class _AssignDialogState extends State<_AssignDialog> {
 
   Future<void> _asignar() async {
     if (_conductorSeleccionado == null) {
-      _showError('Debes seleccionar un conductor disponible');
-      return;
-    }
-
-    final Map<String, dynamic> asignacion = _conductoresDisponibles.firstWhere(
-          (a) => a['id_usuario'] == _conductorSeleccionado,
-      orElse: () => <String, dynamic>{},
-    );
-
-    if (asignacion.isEmpty) {
-      _showError('No se encontró información del conductor seleccionado');
-      return;
-    }
-
-    final idVehiculo = asignacion['id_vehiculo'] as int?;
-    if (idVehiculo == null) {
-      _showError('El conductor no tiene un vehículo asignado');
+      _showError('Debes seleccionar un conductor');
       return;
     }
 
@@ -335,12 +315,12 @@ class _AssignDialogState extends State<_AssignDialog> {
       await _api.asignarViaje(
         widget.viaje['id_viaje'] as int,
         _conductorSeleccionado!,
-        idVehiculo: idVehiculo,
+        0,
       );
 
       if (mounted) {
         Navigator.pop(context);
-        widget.onAssigned(); // ✅ Actualiza la lista
+        widget.onAssigned();
         _showSuccess('Viaje asignado con éxito');
       }
     } catch (e) {
@@ -393,7 +373,6 @@ class _AssignDialogState extends State<_AssignDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Info del viaje
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -405,7 +384,8 @@ class _AssignDialogState extends State<_AssignDialog> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                        const Icon(Icons.info_outline,
+                            size: 16, color: Colors.blue),
                         const SizedBox(width: 8),
                         Text(
                           'Detalles del viaje',
@@ -426,9 +406,8 @@ class _AssignDialogState extends State<_AssignDialog> {
               ),
               const SizedBox(height: 20),
 
-              // Selector de conductor
               Text(
-                'Conductor (${_conductoresDisponibles.length} disponibles)',
+                'Conductor (${_conductores.length} disponibles)',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
@@ -436,7 +415,7 @@ class _AssignDialogState extends State<_AssignDialog> {
               ),
               const SizedBox(height: 8),
 
-              if (_conductoresDisponibles.isEmpty)
+              if (_conductores.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -466,19 +445,20 @@ class _AssignDialogState extends State<_AssignDialog> {
                     filled: true,
                     fillColor: Colors.grey.shade50,
                   ),
-                  items: _conductoresDisponibles.map((c) {
+                  items: _conductores.map((c) {
                     return DropdownMenuItem(
                       value: c['id_usuario'] as int,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            c['conductor_nombre'] as String? ?? 'Conductor',
-                            style: const TextStyle(fontWeight: FontWeight.w500),
+                            c['nombre_usuario'] as String,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w500),
                           ),
-                        if (c['vehiculo_info'] != null)
                           Text(
-                            'Vehículo: ${c['vehiculo_info']}',
+                            c['correo_usuario'] as String? ?? '',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey.shade600,
@@ -488,7 +468,8 @@ class _AssignDialogState extends State<_AssignDialog> {
                       ),
                     );
                   }).toList(),
-                  onChanged: (v) => setState(() => _conductorSeleccionado = v),
+                  onChanged: (v) =>
+                      setState(() => _conductorSeleccionado = v),
                 ),
 
               if (_error != null) ...[
@@ -527,8 +508,7 @@ class _AssignDialogState extends State<_AssignDialog> {
           child: const Text('Cancelar'),
         ),
         FilledButton.icon(
-          onPressed:
-            _loading || _conductoresDisponibles.isEmpty ? null : _asignar,
+          onPressed: _loading || _conductores.isEmpty ? null : _asignar,
           icon: _loading
               ? const SizedBox(
             width: 16,

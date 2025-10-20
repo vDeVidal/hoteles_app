@@ -76,7 +76,17 @@ class _HomePageState extends State<HomePage> {
             ),
             body: TabBarView(children: tabs.map((t) => t.page).toList()),
             bottomNavigationBar: TabBar(
-              tabs: tabs.map((t) => Tab(icon: Icon(t.icon), text: t.label)).toList(),
+              labelColor: Theme.of(context).primaryColor,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: Theme.of(context).primaryColor,
+              tabs: tabs.map((t) {
+                // Si usas iconos de Flutter:
+                if (t.icon is IconData) {
+                  return Tab(icon: Icon(t.icon as IconData), text: t.label);
+                }
+                //  Si usas iconos personalizados:
+                return Tab(icon: t.icon, text: t.label);
+              }).toList(),
             ),
           ),
         );
@@ -102,13 +112,13 @@ class _HomePageState extends State<HomePage> {
           _TabDef('Cond-Veh', Icons.car_rental, const ConductorVehiculoPage()),
           _TabDef('Vehículos', Icons.local_taxi, const VehiclesPage()),
           _TabDef('Rutas', Icons.alt_route, const RoutesPage()),
-          _TabDef('Perfil', Icons.person, const ProfilePage()),
+          _TabDef('Dashboard', Image.asset('assets/icons/hogar.png', width: 24, height: 24), const ProfilePage()),
         ];
 
       case 2: // Conductor
         return [
           _TabDef('Mis Viajes', Icons.local_taxi, const ConductorTripsPage()),
-          _TabDef('Mi Vehículo', Icons.directions_car, const ConductorVehicleInfoPage()), // ✅ NUEVO
+          _TabDef('Mi Vehículo', Icons.directions_car, const ConductorVehicleInfoPage()), //  NUEVO
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
 
@@ -144,7 +154,7 @@ class _HomePageState extends State<HomePage> {
 
 class _TabDef {
   final String label;
-  final IconData icon;
+  final Widget icon; // ✅ Cambiar de IconData a Widget
   final Widget page;
   _TabDef(this.label, this.icon, this.page);
 }

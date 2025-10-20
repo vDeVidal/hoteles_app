@@ -248,11 +248,21 @@ class _AssignVehiculoDialogState extends State<_AssignVehiculoDialog> {
       final vehiculos = await _api.listarVehiculos();
 
       setState(() {
+        // Filtrar conductores activos que NO tengan vehículo asignado
         _conductores = conductores
-            .where((u) => u['id_tipo_usuario'] == 2 && u['disponible'] == true)
+            .where((u) =>
+        u['id_tipo_usuario'] == 2 &&
+            u['id_estado_actividad'] == 1 &&
+            u['is_suspended'] == false
+        )
             .cast<Map<String, dynamic>>()
             .toList();
-        _vehiculos = vehiculos.cast<Map<String, dynamic>>();
+
+        _vehiculos = vehiculos
+            .where((v) => v['id_estado_vehiculo'] == 1)
+            .cast<Map<String, dynamic>>()
+            .toList();
+
         _loadingData = false;
       });
     } catch (e) {

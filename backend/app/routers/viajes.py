@@ -81,10 +81,9 @@ def crear_viaje(
 
 
 def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict | None:
-    """
-    Asigna automáticamente un conductor y vehículo disponibles al viaje.
-    """
-    # ✅ Buscar conductores CON vehículo asignado y disponibles
+    """Asigna automáticamente un conductor y vehículo disponibles al viaje."""
+    
+    # ✅ Simplificar la consulta - no exigir disponibilidad por ahora
     conductores_con_vehiculo = (
         db.query(
             models.Usuario.id_usuario,
@@ -99,26 +98,21 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
             models.Conductor.id_conductor == models.ConductorVehiculo.id_conductor
         )
         .join(models.Vehiculo, models.ConductorVehiculo.id_vehiculo == models.Vehiculo.id_vehiculo)
-        .join(
-            models.DisponibilidadConductores,
-            models.Conductor.id_conductor == models.DisponibilidadConductores.id_conductor
-        )
         .filter(
             models.Usuario.id_hotel == hotel_id,
             models.Usuario.id_tipo_usuario == 2,
             models.Usuario.id_estado_actividad == 1,
             models.Usuario.is_suspended == False,
-            models.ConductorVehiculo.hora_fin_asignacion.is_(None),  # Vehículo actualmente asignado
-            models.DisponibilidadConductores.dias_disponibles_semanales > 0  # Tiene disponibilidad
+            models.ConductorVehiculo.hora_fin_asignacion.is_(None)
         )
         .all()
     )
     
     if not conductores_con_vehiculo:
-        print(f"⚠️ No hay conductores con vehículo asignado disponibles")
+        print(f"⚠️ No hay conductores con vehículo asignado")
         return None
     
-    # Verificar conflictos de horario
+    # Verificar conflictos
     for id_conductor, id_vehiculo, nombre, apellido, patente in conductores_con_vehiculo:
         conflicto = (
             db.query(models.AsignacionViajes)
@@ -132,7 +126,6 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
         )
         
         if not conflicto:
-            # Crear asignación
             asignacion = models.AsignacionViajes(
                 id_viaje=viaje.id_viaje,
                 id_conductor=id_conductor,
@@ -141,11 +134,11 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
                 hora_asignacion=datetime.utcnow()
             )
             
-            viaje.id_estado_viaje = 2  # ASIGNADO
+            viaje.id_estado_viaje = 2
             db.add(asignacion)
             db.flush()
             
-            print(f"✅ Viaje {viaje.id_viaje} asignado a conductor {id_conductor} con vehículo {patente}")
+            print(f"✅ Viaje {viaje.id_viaje} asignado a {nombre} {apellido}")
             
             return {
                 'id_conductor': id_conductor,
@@ -154,41 +147,105 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
                 'vehiculo_patente': patente
             }
     
-    print(f"⚠️ Todos los conductores tienen conflictos de horario")
+    print(f"⚠️ Todos los conductores tienen conflictos")
     return None
+@router.post("/{id_viaje}/asignar", dependencies=[Depends(require_role(3))])
+def asignar_viaje_manual(
+    id_viaje: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    claims: dict = Depends(get_current_claims)
+):
+    """
+    Asigna manualmente un conductor a un viaje.
+    Solo usa el vehículo que ya tiene asignado el conductor.
+    """
+    user_id = int(claims["sub"])
+    me = db.query(models.Usuario).get(user_id)
     
-    # Seleccionar vehículo (elegir el primero disponible o aleatorio)
-    vehiculo_seleccionado = choice(vehiculos_disponibles)
+    if not me or not me.id_hotel:
+        raise HTTPException(403, "Sin hotel asignado")
+    
+    hotel_id = me.id_hotel
+    id_conductor = body.get('id_conductor')
+    
+    if not id_conductor:
+        raise HTTPException(400, "Falta id_conductor")
+    
+    # Validar viaje
+    viaje = db.query(models.Viaje).get(id_viaje)
+    if not viaje or viaje.id_hotel != hotel_id:
+        raise HTTPException(404, "Viaje no encontrado")
+    
+    if viaje.id_estado_viaje != 1:
+        raise HTTPException(400, "El viaje ya fue asignado")
+    
+    # Validar conductor
+    conductor_usuario = db.query(models.Usuario).get(id_conductor)
+    if not conductor_usuario or conductor_usuario.id_hotel != hotel_id or conductor_usuario.id_tipo_usuario != 2:
+        raise HTTPException(400, "Conductor no válido")
+    
+    if conductor_usuario.id_estado_actividad != 1 or conductor_usuario.is_suspended:
+        raise HTTPException(400, "Conductor no disponible")
+    
+    # Buscar el registro de conductor
+    conductor = db.query(models.Conductor).filter(
+        models.Conductor.id_usuario == id_conductor
+    ).first()
+    
+    if not conductor:
+        raise HTTPException(400, "Conductor no encontrado en tabla conductores")
+    
+    # Buscar vehículo asignado al conductor
+    conductor_vehiculo = (
+        db.query(models.ConductorVehiculo)
+        .filter(
+            models.ConductorVehiculo.id_conductor == conductor.id_conductor,
+            models.ConductorVehiculo.hora_fin_asignacion.is_(None)
+        )
+        .first()
+    )
+    
+    if not conductor_vehiculo:
+        raise HTTPException(400, "El conductor no tiene vehículo asignado")
+    
+    id_vehiculo = conductor_vehiculo.id_vehiculo
+    
+    # Validar conflictos de horario
+    conflicto = (
+        db.query(models.AsignacionViajes)
+        .join(models.Viaje, models.AsignacionViajes.id_viaje == models.Viaje.id_viaje)
+        .filter(
+            models.Viaje.agendada_para == viaje.agendada_para,
+            models.AsignacionViajes.id_conductor == id_conductor
+        )
+        .first()
+    )
+    
+    if conflicto:
+        raise HTTPException(409, "El conductor ya tiene un viaje asignado en ese horario")
     
     # Crear asignación
     asignacion = models.AsignacionViajes(
-        id_viaje=viaje.id_viaje,
-        id_conductor=conductor_seleccionado.id_conductor,
-        id_vehiculo=vehiculo_seleccionado.id_vehiculo,
-        asignado_a_id_usuario=None,  # Sistema automático
+        id_viaje=id_viaje,
+        id_conductor=id_conductor,
+        id_vehiculo=id_vehiculo,
+        asignado_a_id_usuario=user_id,
         hora_asignacion=datetime.utcnow()
     )
     
-    # Cambiar estado del viaje a ASIGNADO
-    viaje.id_estado_viaje = 2
+    # Cambiar estado del viaje
+    viaje.id_estado_viaje = 2  # ASIGNADO
     
     db.add(asignacion)
-    db.flush()
+    db.commit()
+    db.refresh(asignacion)
     
-    print(f"✅ Viaje {viaje.id_viaje} asignado automáticamente a conductor {conductor_seleccionado.id_conductor}")
-
-    usuario_conductor = conductor_seleccionado.usuario
-    nombre_conductor = None
-    if usuario_conductor:
-        nombre_conductor = f"{usuario_conductor.nombre_usuario} {usuario_conductor.apellido1_usuario or ''}".strip()
+    # Notificar al conductor
+    from .notificaciones import notificar_viaje_asignado
+    notificar_viaje_asignado(db, id_viaje, id_conductor)
     
-    return {
-        'conductor_usuario_id': usuario_conductor.id_usuario if usuario_conductor else None,
-        'id_vehiculo': vehiculo_seleccionado.id_vehiculo,
-        'conductor_nombre': nombre_conductor,
-        'vehiculo_info': f"{vehiculo_seleccionado.patente}"
-    }
-
+    return {"ok": True, "message": "Viaje asignado correctamente"}
 
 @router.get("")
 def listar_viajes(
@@ -220,8 +277,7 @@ def listar_viajes(
             models.AsignacionViajes,
             models.Viaje.id_viaje == models.AsignacionViajes.id_viaje
         ).filter(
-            models.AsignacionViajes.id_conductor == me.id_usuario
-        )
+            models.AsignacionViajes.id_conductor == me.id_usuario)
     else:  # Usuario
         q = q.filter(models.Viaje.pedida_por_id_usuario == user_id)
     
