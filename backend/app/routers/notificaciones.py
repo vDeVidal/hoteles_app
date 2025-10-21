@@ -136,7 +136,7 @@ def eliminar_notificacion(
 #  Helper: Notificar automáticamente
 # ========================================
 
-def notificar_viaje_asignado(db: Session, viaje_id: int, conductor_id: int):
+def notificar_viaje_asignado(db: Session, viaje_id: int, conductor_usuario_id: int):
     """
     Crea una notificación cuando se asigna un viaje a un conductor.
     Llamar desde viajes.py cuando se asigna.
@@ -150,7 +150,7 @@ def notificar_viaje_asignado(db: Session, viaje_id: int, conductor_id: int):
     
     ahora = datetime.utcnow()
     notif = models.Notificacion(
-        id_usuario=conductor_id,
+        id_usuario=conductor_usuario_id,
         contenido_notificacion=mensaje,
         hora_envio=ahora.time(),
         fecha_envio=ahora.date(),

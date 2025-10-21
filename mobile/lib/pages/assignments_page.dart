@@ -280,16 +280,19 @@ class _AssignDialogState extends State<_AssignDialog> {
 
   Future<void> _loadData() async {
     try {
-      final conductores = await _api.listarUsuariosDeMiHotel(null);
+      final asignaciones = await _api.listarAsignacionesConductorVehiculo();
+      final disponibles = asignaciones
+          .whereType<Map<String, dynamic>>()
+          .map((a) => Map<String, dynamic>.from(a))
+          .where((a) => a['disponible'] == true && a['id_usuario'] != null)
+          .toList()
+        ..sort((a, b) =>
+            (a['conductor_nombre'] ?? '').toString().compareTo((b['conductor_nombre'] ?? '').toString()));
 
       setState(() {
-        _conductores = conductores
-            .where((u) =>
-        u['id_tipo_usuario'] == 2 &&
-            u['disponible'] == true &&
-            u['is_suspended'] == false)
-            .cast<Map<String, dynamic>>()
-            .toList();
+        _conductores = disponibles;
+        _conductorSeleccionado = null;
+        _error = null;
         _loadingData = false;
       });
     } catch (e) {
@@ -446,6 +449,8 @@ class _AssignDialogState extends State<_AssignDialog> {
                     fillColor: Colors.grey.shade50,
                   ),
                   items: _conductores.map((c) {
+                    final nombre = (c['conductor_nombre'] ?? 'Conductor') as String;
+                    final vehiculo = c['vehiculo_info']?.toString();
                     return DropdownMenuItem(
                       value: c['id_usuario'] as int,
                       child: Column(
@@ -453,17 +458,17 @@ class _AssignDialogState extends State<_AssignDialog> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            c['nombre_usuario'] as String,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w500),
+                            nombre,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
-                          Text(
-                            c['correo_usuario'] as String? ?? '',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
+                          if (vehiculo != null && vehiculo.isNotEmpty)
+                            Text(
+                              vehiculo,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     );

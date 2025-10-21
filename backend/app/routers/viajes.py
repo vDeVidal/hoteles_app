@@ -86,6 +86,7 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
     # ✅ Simplificar la consulta - no exigir disponibilidad por ahora
     conductores_con_vehiculo = (
         db.query(
+            models.Conductor.id_conductor,
             models.Usuario.id_usuario,
             models.ConductorVehiculo.id_vehiculo,
             models.Usuario.nombre_usuario,
@@ -113,12 +114,12 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
         return None
     
     # Verificar conflictos
-    for id_conductor, id_vehiculo, nombre, apellido, patente in conductores_con_vehiculo:
+    for conductor_id, usuario_id, id_vehiculo, nombre, apellido, patente in conductores_con_vehiculo:
         conflicto = (
             db.query(models.AsignacionViajes)
             .join(models.Viaje, models.AsignacionViajes.id_viaje == models.Viaje.id_viaje)
             .filter(
-                models.AsignacionViajes.id_conductor == id_conductor,
+                models.AsignacionViajes.id_conductor == conductor_id,
                 models.Viaje.agendada_para == viaje.agendada_para,
                 models.Viaje.id_estado_viaje.in_([2, 3, 4])
             )
@@ -128,7 +129,7 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
         if not conflicto:
             asignacion = models.AsignacionViajes(
                 id_viaje=viaje.id_viaje,
-                id_conductor=id_conductor,
+                id_conductor=conductor_id,
                 id_vehiculo=id_vehiculo,
                 asignado_a_id_usuario=None,
                 hora_asignacion=datetime.utcnow()
@@ -139,9 +140,10 @@ def _auto_asignar_viaje(db: Session, viaje: models.Viaje, hotel_id: int) -> dict
             db.flush()
             
             print(f"✅ Viaje {viaje.id_viaje} asignado a {nombre} {apellido}")
-            
+
             return {
-                'id_conductor': id_conductor,
+                 'id_conductor': conductor_id,
+                'conductor_usuario_id': usuario_id,
                 'id_vehiculo': id_vehiculo,
                 'conductor_nombre': f"{nombre} {apellido}".strip(),
                 'vehiculo_patente': patente
@@ -196,11 +198,13 @@ def asignar_viaje_manual(
     if not conductor:
         raise HTTPException(400, "Conductor no encontrado en tabla conductores")
     
+    conductor_id = conductor.id_conductor
+    
     # Buscar vehículo asignado al conductor
     conductor_vehiculo = (
         db.query(models.ConductorVehiculo)
         .filter(
-            models.ConductorVehiculo.id_conductor == conductor.id_conductor,
+            models.ConductorVehiculo.id_conductor == conductor_id,
             models.ConductorVehiculo.hora_fin_asignacion.is_(None)
         )
         .first()
@@ -217,7 +221,7 @@ def asignar_viaje_manual(
         .join(models.Viaje, models.AsignacionViajes.id_viaje == models.Viaje.id_viaje)
         .filter(
             models.Viaje.agendada_para == viaje.agendada_para,
-            models.AsignacionViajes.id_conductor == id_conductor
+            models.AsignacionViajes.id_conductor == conductor_id
         )
         .first()
     )
@@ -228,7 +232,7 @@ def asignar_viaje_manual(
     # Crear asignación
     asignacion = models.AsignacionViajes(
         id_viaje=id_viaje,
-        id_conductor=id_conductor,
+         id_conductor=conductor_id,
         id_vehiculo=id_vehiculo,
         asignado_a_id_usuario=user_id,
         hora_asignacion=datetime.utcnow()
@@ -243,8 +247,7 @@ def asignar_viaje_manual(
     
     # Notificar al conductor
     from .notificaciones import notificar_viaje_asignado
-    notificar_viaje_asignado(db, id_viaje, id_conductor)
-    
+    notificar_viaje_asignado(db, id_viaje, conductor_usuario.id_usuario)
     return {"ok": True, "message": "Viaje asignado correctamente"}
 
 @router.get("")
@@ -273,11 +276,17 @@ def listar_viajes(
         q = q.filter(models.Viaje.id_hotel == me.id_hotel)
     elif role == 2:  # Conductor
         # Solo viajes asignados a este conductor
+        conductor = db.query(models.Conductor).filter(
+            models.Conductor.id_usuario == me.id_usuario
+        ).first()
+
+        if not conductor:
+            return []
         q = q.join(
             models.AsignacionViajes,
             models.Viaje.id_viaje == models.AsignacionViajes.id_viaje
         ).filter(
-            models.AsignacionViajes.id_conductor == me.id_usuario)
+            models.AsignacionViajes.id_conductor == conductor.id_conductor)
     else:  # Usuario
         q = q.filter(models.Viaje.pedida_por_id_usuario == user_id)
     
@@ -359,9 +368,15 @@ def obtener_viaje(
         if viaje.id_hotel != me.id_hotel:
             raise HTTPException(403, "Sin acceso a este viaje")
     elif role == 2:  # Conductor
+        conductor = db.query(models.Conductor).filter(
+            models.Conductor.id_usuario == user_id
+        ).first()
+
+        if not conductor:
+            raise HTTPException(403, "No eres conductor")
         asig = db.query(models.AsignacionViajes).filter(
             models.AsignacionViajes.id_viaje == id_viaje,
-            models.AsignacionViajes.id_conductor == user_id
+            models.AsignacionViajes.id_conductor == conductor.id_conductor
         ).first()
         if not asig:
             raise HTTPException(403, "Viaje no asignado a ti")
@@ -385,7 +400,8 @@ def obtener_viaje(
                 models.Vehiculo.modelo.label("modelo"),
                 models.Vehiculo.capacidad.label("capacidad")
             )
-            .join(models.Usuario, models.AsignacionViajes.id_conductor == models.Usuario.id_usuario)
+            .join(models.Conductor, models.AsignacionViajes.id_conductor == models.Conductor.id_conductor)
+            .join(models.Usuario, models.Conductor.id_usuario == models.Usuario.id_usuario)
             .outerjoin(models.Vehiculo, models.AsignacionViajes.id_vehiculo == models.Vehiculo.id_vehiculo)
             .outerjoin(models.MarcaVehiculo, models.Vehiculo.id_marca_vehiculo == models.MarcaVehiculo.id_marca_vehiculo)
             .filter(models.AsignacionViajes.id_viaje == id_viaje)

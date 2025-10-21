@@ -80,12 +80,14 @@ class _HomePageState extends State<HomePage> {
               unselectedLabelColor: Colors.grey,
               indicatorColor: Theme.of(context).primaryColor,
               tabs: tabs.map((t) {
-                // Si usas iconos de Flutter:
-                if (t.icon is IconData) {
-                  return Tab(icon: Icon(t.icon as IconData), text: t.label);
+                final icon = t.icon;
+                if (icon is IconData) {
+                  return Tab(icon: Icon(icon), text: t.label);
                 }
-                //  Si usas iconos personalizados:
-                return Tab(icon: t.icon, text: t.label);
+                if (icon is Widget) {
+                  return Tab(icon: icon, text: t.label);
+                }
+                return Tab(text: t.label);
               }).toList(),
             ),
           ),
@@ -112,7 +114,7 @@ class _HomePageState extends State<HomePage> {
           _TabDef('Cond-Veh', Icons.car_rental, const ConductorVehiculoPage()),
           _TabDef('Vehículos', Icons.local_taxi, const VehiclesPage()),
           _TabDef('Rutas', Icons.alt_route, const RoutesPage()),
-          _TabDef('Dashboard', Image.asset('assets/icons/hogar.png', width: 24, height: 24), const ProfilePage()),
+          _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
 
       case 2: // Conductor
@@ -122,9 +124,9 @@ class _HomePageState extends State<HomePage> {
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
 
-      default: // Usuario (Huésped) - ✅ ACTUALIZAR ESTA SECCIÓN
+      default: // Usuario (Huésped) -  ACTUALIZAR ESTA SECCIÓN
         return [
-          _TabDef('Solicitar', Icons.directions_car, const GuestRequestTripPage()), // ✅ Nueva página
+          _TabDef('Solicitar', Icons.directions_car, const GuestRequestTripPage()), //  Nueva página
           _TabDef('Mis Viajes', Icons.list, const Center(child: Text('Mis viajes (próximamente)'))),
           _TabDef('Perfil', Icons.person, const ProfilePage()),
         ];
@@ -154,7 +156,7 @@ class _HomePageState extends State<HomePage> {
 
 class _TabDef {
   final String label;
-  final Widget icon; // ✅ Cambiar de IconData a Widget
+  final Object icon;
   final Widget page;
   _TabDef(this.label, this.icon, this.page);
 }

@@ -35,7 +35,14 @@ def listar_asignaciones(
         # Filtrar por hotel a través del viaje
         q = q.join(models.Viaje).filter(models.Viaje.id_hotel == me.id_hotel)
     elif role == 2:  # Conductor
-        q = q.filter(models.AsignacionViajes.id_conductor == user_id)
+        conductor = db.query(models.Conductor).filter(
+            models.Conductor.id_usuario == user_id
+        ).first()
+
+        if not conductor:
+            return []
+
+        q = q.filter(models.AsignacionViajes.id_conductor == conductor.id_conductor)
     else:
         raise HTTPException(403, "Sin permisos para ver asignaciones")
     
@@ -66,7 +73,11 @@ def obtener_asignacion(
         if viaje.id_hotel != me.id_hotel:
             raise HTTPException(403, "Sin acceso a esta asignación")
     elif role == 2:  # Conductor
-        if asig.id_conductor != user_id:
+        conductor = db.query(models.Conductor).filter(
+            models.Conductor.id_usuario == user_id
+        ).first()
+
+        if not conductor or asig.id_conductor != conductor.id_conductor:
             raise HTTPException(403, "No es tu asignación")
     else:
         raise HTTPException(403, "Sin permisos")

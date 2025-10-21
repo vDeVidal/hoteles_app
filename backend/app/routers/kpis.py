@@ -195,7 +195,8 @@ def get_conductores_stats(
     
     stats = (
         db.query(
-            models.Usuario.id_usuario,
+            models.Conductor.id_conductor.label("id_conductor"),
+            models.Usuario.id_usuario.label("id_usuario"),
             func.concat(
                 models.Usuario.nombre_usuario, ' ',
                 models.Usuario.apellido1_usuario
@@ -215,14 +216,20 @@ def get_conductores_stats(
                 )
             ).label("tiempo_promedio")
         )
-        .join(models.AsignacionViajes, models.Usuario.id_usuario == models.AsignacionViajes.id_conductor)
+       .join(models.Conductor, models.Usuario.id_usuario == models.Conductor.id_usuario)
+        .join(models.AsignacionViajes, models.Conductor.id_conductor == models.AsignacionViajes.id_conductor)
         .join(models.Viaje, models.AsignacionViajes.id_viaje == models.Viaje.id_viaje)
         .filter(
             models.Usuario.id_hotel == selected_hotel,
             models.Usuario.id_tipo_usuario == 2,
             models.Viaje.agendada_para.between(fecha_desde, fecha_hasta)
         )
-        .group_by(models.Usuario.id_usuario, models.Usuario.nombre_usuario, models.Usuario.apellido1_usuario)
+        .group_by(
+            models.Conductor.id_conductor,
+            models.Usuario.id_usuario,
+            models.Usuario.nombre_usuario,
+            models.Usuario.apellido1_usuario
+        )
         .order_by(func.count(models.AsignacionViajes.id_asignacion).desc())
         .all()
     )
@@ -234,7 +241,8 @@ def get_conductores_stats(
         },
         "conductores": [
             {
-                "id_conductor": row.id_usuario,
+                "id_conductor": row.id_conductor,
+                "id_usuario": row.id_usuario,
                 "nombre": row.nombre_completo,
                 "viajes_asignados": row.viajes_asignados or 0,
                 "viajes_aceptados": row.viajes_aceptados or 0,
